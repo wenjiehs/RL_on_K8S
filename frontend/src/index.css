@@ -1,0 +1,32 @@
+:root {
+  /* 腾讯云风格色板 */
+  --tc-bg-page: #f0f2f5; /* 页面背景色 (浅灰) */
+  --tc-bg-component: #ffffff; /* 组件背景色 (白) */
+  --tc-primary: #0d6eff; /* 主色调 (蓝) */
+  --tc-text-primary: #1f2329; /* 主要文字 (深灰) */
+  --tc-text-secondary: #5f6672; /* 次要文字 (中灰) */
+  --tc-border-color: #dcdfe6; /* 边框颜色 */
+
+  /* --- 侧边栏样式覆盖 --- */
+  --tc-bg-sider: #000b17; /* 侧边栏背景 (更深的蓝黑) */
+  --tc-text-on-dark: rgba(255, 255, 255, 0.85); /* 深色背景上的文字 */
+
+  /* TDesign Menu Dark Theme Overrides */
+  --td-menu-dark-bg-color: var(--tc-bg-sider);
+  --td-menu-dark-color: rgba(255, 255, 255, 0.85); /* 提高未选中项的文字亮度 */
+  --td-menu-dark-bg-active: var(--tc-primary); /* 选中背景用主蓝色 */
+  --td-menu-dark-color-active: #ffffff;
+  --td-menu-dark-bg-hover: rgba(255, 255, 255, 0.1);
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background-color: var(--tc-bg-page);
+    color: var(--tc-text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+}

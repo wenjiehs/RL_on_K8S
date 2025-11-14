@@ -1,0 +1,233 @@
+/* 全局组件样式优化 */
+
+/* 对话框样式优化 - 移除透明效果 */
+.t-dialog__mask {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+.t-dialog__wrap {
+  background-color: #ffffff !important;
+}
+
+.t-dialog {
+  background-color: #ffffff !important;
+}
+
+.t-dialog__body {
+  background-color: #ffffff !important;
+}
+
+/* 按钮样式优化 */
+.t-button {
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.t-button--theme-primary {
+  background: var(--tc-primary) !important;
+  border-color: var(--tc-primary) !important;
+}
+
+.t-button--theme-primary:hover {
+  background: #0052d9 !important;
+  border-color: #0052d9 !important;
+  box-shadow: 0 2px 8px rgba(13, 110, 255, 0.3) !important;
+}
+
+.t-button--variant-outline {
+  border-color: var(--tc-border-color) !important;
+  color: var(--tc-text-primary) !important;
+}
+
+.t-button--variant-outline:hover {
+  border-color: var(--tc-primary) !important;
+  color: var(--tc-primary) !important;
+  background: rgba(13, 110, 255, 0.05) !important;
+}
+
+.t-button--variant-text {
+  color: var(--tc-primary) !important;
+}
+
+.t-button--variant-text:hover {
+  background: rgba(13, 110, 255, 0.08) !important;
+}
+
+.t-button--theme-danger.t-button--variant-text {
+  color: #e34d59 !important;
+}
+
+.t-button--theme-danger.t-button--variant-text:hover {
+  background: rgba(227, 77, 89, 0.08) !important;
+}
+
+/* 表格样式优化 */
+.t-table {
+  border-radius: 4px !important;
+}
+
+.t-table__header {
+  background: #fafafa !important;
+}
+
+.t-table__header th {
+  font-weight: 600 !important;
+  color: var(--tc-text-primary) !important;
+  border-bottom: 2px solid var(--tc-border-color) !important;
+  padding: 14px 16px !important;
+}
+
+.t-table tbody tr {
+  transition: background 0.2s ease !important;
+}
+
+.t-table tbody tr:hover {
+  background: rgba(13, 110, 255, 0.03) !important;
+}
+
+.t-table tbody td {
+  padding: 12px 16px !important;
+  color: var(--tc-text-secondary) !important;
+}
+
+/* 卡片样式优化 */
+.t-card {
+  border: 1px solid var(--tc-border-color) !important;
+  transition: box-shadow 0.2s ease !important;
+}
+
+.t-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+.t-card__header {
+  border-bottom: 1px solid var(--tc-border-color) !important;
+  padding: 16px 24px !important;
+}
+
+.t-card__title {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: var(--tc-text-primary) !important;
+}
+
+.t-card__body {
+  padding: 24px !important;
+}
+
+/* 标签样式优化 */
+.t-tag {
+  border-radius: 3px !important;
+  font-weight: 500 !important;
+  padding: 2px 8px !important;
+}
+
+.t-tag--theme-success {
+  background: #e8f8f2 !important;
+  color: #00a870 !important;
+  border-color: #00a870 !important;
+}
+
+.t-tag--theme-primary {
+  background: #e6f2ff !important;
+  color: #0d6eff !important;
+  border-color: #0d6eff !important;
+}
+
+.t-tag--theme-warning {
+  background: #fff3e6 !important;
+  color: #ed7b2f !important;
+  border-color: #ed7b2f !important;
+}
+
+.t-tag--theme-danger {
+  background: #ffebec !important;
+  color: #e34d59 !important;
+  border-color: #e34d59 !important;
+}
+
+/* 输入框样式优化 */
+.t-input {
+  border-radius: 4px !important;
+  border-color: var(--tc-border-color) !important;
+  transition: all 0.2s ease !important;
+}
+
+.t-input:hover {
+  border-color: var(--tc-primary) !important;
+}
+
+.t-input:focus {
+  border-color: var(--tc-primary) !important;
+  box-shadow: 0 0 0 3px rgba(13, 110, 255, 0.1) !important;
+}
+
+/* 选择器样式优化 */
+.t-select {
+  border-radius: 4px !important;
+}
+
+.t-select__input {
+  border-color: var(--tc-border-color) !important;
+}
+
+.t-select__input:hover {
+  border-color: var(--tc-primary) !important;
+}
+
+/* 标签页样式优化 */
+.t-tabs__nav {
+  border-bottom: 2px solid var(--tc-border-color) !important;
+}
+
+.t-tabs__nav-item {
+  font-weight: 500 !important;
+  color: var(--tc-text-secondary) !important;
+  padding: 12px 20px !important;
+  transition: all 0.2s ease !important;
+}
+
+.t-tabs__nav-item:hover {
+  color: var(--tc-primary) !important;
+}
+
+.t-tabs__nav-item.t-is-active {
+  color: var(--tc-primary) !important;
+  font-weight: 600 !important;
+}
+
+.t-tabs__nav-item-wrapper::after {
+  background: var(--tc-primary) !important;
+  height: 3px !important;
+}
+
+/* 进度条样式优化 */
+.t-progress__bar {
+  border-radius: 4px !important;
+}
+
+.t-progress--theme-primary .t-progress__inner {
+  background: var(--tc-primary) !important;
+}
+
+.t-progress--theme-success .t-progress__inner {
+  background: #00a870 !important;
+}
+
+.t-progress--theme-error .t-progress__inner {
+  background: #e34d59 !important;
+}
+
+/* Space 组件间距优化 */
+.t-space--small {
+  gap: 8px !important;
+}
+
+.t-space--medium {
+  gap: 16px !important;
+}
+
+.t-space--large {
+  gap: 24px !important;
+}
