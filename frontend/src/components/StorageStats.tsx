@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Row, Col, MessagePlugin, Loading } from 'tdesign-react';
 import { FolderIcon, FileIcon } from 'tdesign-icons-react';
 
+// Statistics from CFS filesystem (no CRD dependency)
 interface DatasetStats {
   totalDatasets: number;
   totalSize: number;
@@ -27,6 +28,7 @@ const StorageStats: React.FC<StorageStatsProps> = ({ namespace }) => {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
+      // Fetch statistics from CFS filesystem (direct file system access, no CRD)
       const response = await fetch(`http://localhost:8080/api/datasets/stats?namespace=${namespace}`);
       if (response.ok) {
         const data = await response.json();

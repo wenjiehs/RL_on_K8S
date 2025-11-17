@@ -1,0 +1,73 @@
+---
+# Test PVC using CSI driver
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cfs-rl-test-pvc
+  namespace: default
+  labels:
+    app: rl-console-test
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: cfs-turbo-sc
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Test Pod using CSI-based PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cfs-csi-test
+  namespace: default
+  labels:
+    app: cfs-test
+spec:
+  containers:
+  - name: test
+    image: alpine:3.14
+    command:
+      - sh
+      - -c
+      - |
+        echo "=== CFS CSI Mount Test ==="
+        echo "Mounted at: /cfs"
+        echo ""
+        echo "Disk usage:"
+        df -h /cfs
+        echo ""
+        echo "Creating RL data directory structure..."
+        mkdir -p /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/train/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/eval/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/model/$(date +%Y-%m-%d)
+        
+        echo "Writing test files..."
+        echo "Test raw data - $(date)" > /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)/test.txt
+        echo "Test training data - $(date)" > /cfs/rl-data/test-exp/train/$(date +%Y-%m-%d)/test.txt
+        echo "Test eval data - $(date)" > /cfs/rl-data/test-exp/eval/$(date +%Y-%m-%d)/test.txt
+        echo "Test model data - $(date)" > /cfs/rl-data/test-exp/model/$(date +%Y-%m-%d)/test.txt
+        
+        echo ""
+        echo "Directory structure:"
+        ls -lR /cfs/rl-data/ 2>/dev/null || echo "Directory created successfully"
+        
+        echo ""
+        echo "Reading test files:"
+        cat /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)/test.txt
+        cat /cfs/rl-data/test-exp/train/$(date +%Y-%m-%d)/test.txt
+        
+        echo ""
+        echo "=== Test completed successfully! ==="
+        echo "Sleeping for 1 hour to allow manual inspection..."
+        sleep 3600
+    volumeMounts:
+    - name: cfs-storage
+      mountPath: /cfs
+  volumes:
+  - name: cfs-storage
+    persistentVolumeClaim:
+      claimName: cfs-rl-test-pvc
+  restartPolicy: Never

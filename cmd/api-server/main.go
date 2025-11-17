@@ -53,6 +53,9 @@ var (
 )
 
 func main() {
+	// Initialize CFS client
+	InitCFSClient()
+	
 	mux := http.NewServeMux()
 	
 	// API routes
@@ -73,18 +76,23 @@ func main() {
 	// Terminal routes
 	mux.HandleFunc("/api/terminal/connect", handleTerminalConnect)
 	
-	// Dataset routes
-	mux.HandleFunc("/api/datasets", handleListDatasets)
-	mux.HandleFunc("/api/datasets/create", handleCreateDataset)
-	mux.HandleFunc("/api/datasets/delete", handleDeleteDataset)
-	mux.HandleFunc("/api/datasets/upload", handleUploadFile)
-	mux.HandleFunc("/api/datasets/stats", handleGetDatasetStats)
+	// CFS Dataset routes (direct filesystem access)
+	mux.HandleFunc("/api/datasets", handleListCFSDatasets)
+	mux.HandleFunc("/api/datasets/create", handleCreateCFSDataset)
+	mux.HandleFunc("/api/datasets/delete", handleDeleteCFSDataset)
+	mux.HandleFunc("/api/datasets/upload", handleUploadCFSFile)
+	mux.HandleFunc("/api/datasets/stats", handleGetCFSDatasetStats)
 	mux.HandleFunc("/api/datasets/browse", handleBrowseDirectory)
 	mux.HandleFunc("/api/datasets/tree", handleGetDirectoryTree)
 	mux.HandleFunc("/api/datasets/download", handleDownloadFile)
 	mux.HandleFunc("/api/datasets/file/delete", handleDeleteFile)
 	mux.HandleFunc("/api/datasets/preview", handlePreviewFile)
 	mux.HandleFunc("/api/datasets/preview/parquet", handlePreviewParquet)
+	
+	// Storage configuration routes
+	mux.HandleFunc("/api/storage/status", handleStorageStatus)
+	mux.HandleFunc("/api/storage/config", handleStorageConfig)
+	mux.HandleFunc("/api/storage/initialize", handleInitializeStorage)
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Dialog, Button, MessagePlugin, Space, Select, Input, Textarea, Upload } from 'tdesign-react';
-import { AddIcon, FolderIcon, UploadIcon } from 'tdesign-icons-react';
+import { AddIcon, FolderIcon } from 'tdesign-icons-react';
 import type { UploadFile } from 'tdesign-react';
 
 interface CreateDatasetDialogProps {
@@ -17,7 +17,6 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
   namespace,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState('');
   const [experimentId, setExperimentId] = useState('');
   const [dataType, setDataType] = useState('raw');
   const [description, setDescription] = useState('');
@@ -31,11 +30,6 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
   ];
 
   const handleSubmit = async () => {
-    if (!name) {
-      MessagePlugin.warning('Please enter dataset name');
-      return;
-    }
-
     if (!experimentId) {
       MessagePlugin.warning('Please enter experiment ID');
       return;
@@ -43,30 +37,27 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
 
     setLoading(true);
     try {
-      // Create dataset
+      // Create dataset directory in CFS
       const response = await fetch('http://localhost:8080/api/datasets/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name,
           experimentId,
           dataType,
           description,
-          namespace,
-          tags: {},
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        MessagePlugin.success(`Dataset ${name} created successfully`);
+        MessagePlugin.success(`Dataset created at ${data.path}`);
         
         // Upload files if any
         if (files.length > 0) {
-          await uploadFiles(name);
+          await uploadFiles();
         }
         
         onSuccess();
@@ -82,40 +73,34 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
     }
   };
 
-  const uploadFiles = async (datasetName: string) => {
+  const uploadFiles = async () => {
     for (const file of files) {
       if (!file.raw) continue;
 
-      const chunkSize = 1024 * 1024; // 1MB chunks
-      const totalChunks = Math.ceil(file.raw.size / chunkSize);
+      const formData = new FormData();
+      formData.append('file', file.raw);
+      formData.append('experimentId', experimentId);
+      formData.append('dataType', dataType);
 
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, file.raw.size);
-        const chunk = file.raw.slice(start, end);
+      try {
+        const response = await fetch('http://localhost:8080/api/datasets/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-        const formData = new FormData();
-        formData.append('file', chunk);
-        formData.append('datasetName', datasetName);
-        formData.append('namespace', namespace);
-        formData.append('fileName', file.name || '');
-        formData.append('chunkIndex', i.toString());
-        formData.append('totalChunks', totalChunks.toString());
-
-        try {
-          await fetch('http://localhost:8080/api/datasets/upload', {
-            method: 'POST',
-            body: formData,
-          });
-        } catch (error) {
-          console.error('Failed to upload chunk:', error);
+        if (response.ok) {
+          MessagePlugin.success(`File ${file.name} uploaded successfully`);
+        } else {
+          const error = await response.json();
+          MessagePlugin.error(`Failed to upload ${file.name}: ${error.error}`);
         }
+      } catch (error) {
+        MessagePlugin.error(`Failed to upload ${file.name}: ${(error as Error).message}`);
       }
     }
   };
 
   const resetForm = () => {
-    setName('');
     setExperimentId('');
     setDataType('raw');
     setDescription('');
@@ -153,18 +138,6 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
       mode="modal"
     >
       <div style={{ padding: '8px 0' }}>
-        {/* Dataset Name */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Dataset Name <span style={{ color: '#e34d59' }}>*</span>
-          </div>
-          <Input
-            placeholder="e.g., cartpole-dataset-1"
-            value={name}
-            onChange={(value) => setName(value)}
-          />
-        </div>
-
         {/* Experiment ID */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
@@ -192,7 +165,7 @@ const CreateDatasetDialog: React.FC<CreateDatasetDialogProps> = ({
             style={{ width: '100%' }}
           />
           <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)', marginTop: '6px' }}>
-            📁 Storage path: /cfs/rl-data/{experimentId}/{dataType}/{'{date}'}
+            📁 Storage path: /cfs/rl-data/{experimentId}/{dataType}/
           </div>
         </div>
 

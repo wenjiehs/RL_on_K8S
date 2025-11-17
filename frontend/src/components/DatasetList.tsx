@@ -4,6 +4,7 @@ import { AddIcon, RefreshIcon, DeleteIcon, FolderIcon, SearchIcon, BrowseIcon } 
 import CreateDatasetDialog from './CreateDatasetDialog';
 import FileBrowser from './FileBrowser';
 
+// CFSDataset represents a dataset from CFS filesystem (no CRD dependency)
 interface Dataset {
   id: string;
   name: string;
@@ -25,6 +26,7 @@ interface DatasetStats {
   totalSize: number;
   typeBreakdown: Record<string, number>;
   sizeBreakdown: Record<string, number>;
+  recentUploads?: Dataset[];
 }
 
 interface DatasetListProps {
@@ -60,6 +62,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ namespace }) => {
   const fetchDatasets = useCallback(async () => {
     setLoading(true);
     try {
+      // Fetch datasets from CFS filesystem (direct file system access, no CRD)
       const params = new URLSearchParams({ namespace });
       if (filterDataType) params.append('dataType', filterDataType);
       if (filterExperimentId) params.append('experimentId', filterExperimentId);
@@ -82,6 +85,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ namespace }) => {
 
   const fetchStats = useCallback(async () => {
     try {
+      // Fetch statistics from CFS filesystem
       const response = await fetch(`http://localhost:8080/api/datasets/stats?namespace=${namespace}`);
       if (response.ok) {
         const data = await response.json();
@@ -100,14 +104,15 @@ const DatasetList: React.FC<DatasetListProps> = ({ namespace }) => {
   const handleDelete = (dataset: Dataset) => {
     DialogPlugin.confirm({
       header: 'Delete Dataset',
-      body: `Are you sure you want to delete dataset "${dataset.name}"? This action cannot be undone.`,
+      body: `Are you sure you want to delete dataset "${dataset.name}"? This will permanently delete all files in the directory: ${dataset.storagePath}. This action cannot be undone.`,
       confirmBtn: 'Delete',
       cancelBtn: 'Cancel',
       theme: 'warning',
       onConfirm: async () => {
         try {
+          // Delete dataset directory from CFS filesystem
           const response = await fetch(
-            `http://localhost:8080/api/datasets/delete?name=${dataset.name}&namespace=${dataset.namespace}`,
+            `http://localhost:8080/api/datasets/delete?experimentId=${dataset.experimentId}&dataType=${dataset.dataType}`,
             { method: 'DELETE' }
           );
 

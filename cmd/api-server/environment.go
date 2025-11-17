@@ -1179,6 +1179,31 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 					},
 					"template": map[string]interface{}{
 						"spec": map[string]interface{}{
+							"securityContext": map[string]interface{}{
+								"fsGroup":    int64(100),
+								"runAsUser":  int64(1000),
+								"runAsGroup": int64(100),
+							},
+							"initContainers": []map[string]interface{}{
+								{
+									"name":  "fix-cfs-permissions",
+									"image": "busybox:latest",
+									"command": []string{
+										"sh",
+										"-c",
+										"mkdir -p /cfs/rl-data && chown -R 1000:100 /cfs/rl-data && chmod -R 755 /cfs/rl-data || true",
+									},
+									"volumeMounts": []map[string]interface{}{
+										{
+											"name":      "rl-data",
+											"mountPath": CFSMountPath,
+										},
+									},
+									"securityContext": map[string]interface{}{
+										"runAsUser": int64(0),
+									},
+								},
+							},
 							"containers": []map[string]interface{}{
 								{
 									"name":  "ray-head",
@@ -1198,6 +1223,20 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 											"memory": "4Gi",
 										},
 									},
+									"volumeMounts": []map[string]interface{}{
+										{
+											"name":      "rl-data",
+											"mountPath": CFSMountPath,
+										},
+									},
+								},
+							},
+							"volumes": []map[string]interface{}{
+								{
+									"name": "rl-data",
+									"persistentVolumeClaim": map[string]interface{}{
+										"claimName": DefaultPVCName,
+									},
 								},
 							},
 						},
@@ -1214,6 +1253,31 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 						},
 						"template": map[string]interface{}{
 							"spec": map[string]interface{}{
+								"securityContext": map[string]interface{}{
+									"fsGroup":    int64(100),
+									"runAsUser":  int64(1000),
+									"runAsGroup": int64(100),
+								},
+								"initContainers": []map[string]interface{}{
+									{
+										"name":  "fix-cfs-permissions",
+										"image": "busybox:latest",
+										"command": []string{
+											"sh",
+											"-c",
+											"mkdir -p /cfs/rl-data && chown -R 1000:100 /cfs/rl-data && chmod -R 755 /cfs/rl-data || true",
+										},
+										"volumeMounts": []map[string]interface{}{
+											{
+												"name":      "rl-data",
+												"mountPath": CFSMountPath,
+											},
+										},
+										"securityContext": map[string]interface{}{
+											"runAsUser": int64(0),
+										},
+									},
+								},
 								"containers": []map[string]interface{}{
 									{
 										"name":  "ray-worker",
@@ -1227,6 +1291,20 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 												"cpu":    "1000m",
 												"memory": "1Gi",
 											},
+										},
+										"volumeMounts": []map[string]interface{}{
+											{
+												"name":      "rl-data",
+												"mountPath": CFSMountPath,
+											},
+										},
+									},
+								},
+								"volumes": []map[string]interface{}{
+									{
+										"name": "rl-data",
+										"persistentVolumeClaim": map[string]interface{}{
+											"claimName": DefaultPVCName,
 										},
 									},
 								},

@@ -1,0 +1,51 @@
+---
+# Production PVC for RL Data Storage
+# Uses Tencent Cloud CSI driver for CFS Turbo
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rl-data-storage
+  namespace: default
+  labels:
+    app: rl-console
+    component: data-storage
+    storage-type: cfs-turbo
+spec:
+  accessModes:
+    - ReadWriteMany  # 支持多Pod同时读写
+  storageClassName: cfs-turbo-sc  # 使用腾讯云CSI驱动
+  resources:
+    requests:
+      storage: 100Gi  # 根据实际需求调整
+
+---
+# Example: Ray Environment with CFS Mount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ray-worker-with-cfs
+  namespace: default
+  labels:
+    app: ray
+    component: worker
+spec:
+  containers:
+  - name: ray-worker
+    image: rayproject/ray:2.9.0
+    command: ["ray", "start", "--block", "--address=ray-head:6379"]
+    volumeMounts:
+    - name: rl-data
+      mountPath: /data  # Ray环境中的数据目录
+      subPath: rl-data  # 使用CFS中的rl-data子目录
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+  volumes:
+  - name: rl-data
+    persistentVolumeClaim:
+      claimName: rl-data-storage
+  restartPolicy: Always
