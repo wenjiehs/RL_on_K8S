@@ -12,29 +12,52 @@
 
 ## 前置要求
 
-### 1. 安装 KubeRay Operator
+### 1. 检查或安装 KubeRay Operator
 
-在您的 Kubernetes 集群中安装 KubeRay Operator：
+**首先检查集群中是否已安装 KubeRay Operator：**
+
+```bash
+# 检查 Helm 安装
+helm list -A | grep kuberay
+
+# 检查 Operator Pod
+kubectl get pods -A | grep kuberay-operator
+
+# 检查 CRD
+kubectl get crd | grep ray
+```
+
+**如果已安装**（输出类似 `kuberay-operator    yuehua-test    1    deployed`），则跳过安装步骤，直接使用即可！
+
+**如果未安装**，在您的 Kubernetes 集群中安装 KubeRay Operator：
 
 ```bash
 # 方法 1: 使用 Helm (推荐)
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
+
+# 安装到指定命名空间（避免冲突）
+helm install kuberay-operator kuberay/kuberay-operator \
+  --version 1.0.0 \
+  -n kuberay-system \
+  --create-namespace
 
 # 方法 2: 使用 kubectl
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.0.0&timeout=90s"
 ```
 
+**注意**: 如果遇到 ClusterRole 冲突错误，说明集群中已有 KubeRay Operator，无需重新安装。
+
 ### 2. 验证安装
 
 ```bash
-# 检查 Operator 是否运行
-kubectl get pods -n kuberay-system
+# 检查 Operator 是否运行（根据实际安装的命名空间）
+kubectl get pods -A | grep kuberay-operator
 
 # 应该看到类似输出：
-# NAME                                READY   STATUS    RESTARTS   AGE
-# kuberay-operator-7b8c9d5f6b-xxxxx   1/1     Running   0          1m
+# kuberay-system   kuberay-operator-7b8c9d5f6b-xxxxx   1/1     Running   0   1m
+# 或
+# yuehua-test      kuberay-operator-5c5d9fcf4c-vrmrs   1/1     Running   0   15d
 ```
 
 ### 3. 验证 CRD

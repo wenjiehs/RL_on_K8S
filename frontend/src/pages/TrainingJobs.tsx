@@ -104,7 +104,7 @@ const TrainingJobs: React.FC = () => {
       cell: ({ row }: { row: RLTrainingJob }) => (
         <Progress
           percentage={row.progress}
-          theme={row.status === 'Failed' ? 'error' : row.status === 'Completed' ? 'success' : 'primary'}
+          theme={row.status === 'Failed' ? 'danger' : row.status === 'Completed' ? 'success' : 'warning'}
           size="small"
         />
       ),

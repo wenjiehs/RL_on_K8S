@@ -35,6 +35,51 @@ type Environment struct {
 	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
+// EnvironmentDetail represents detailed information about an environment
+type EnvironmentDetail struct {
+	Environment
+	RayVersion      string            `json:"rayVersion,omitempty"`
+	PythonVersion   string            `json:"pythonVersion,omitempty"`
+	Resources       ResourceConfig    `json:"resources"`
+	Storage         StorageConfig     `json:"storage"`
+	Network         NetworkConfig     `json:"network"`
+	Nodes           NodeConfig        `json:"nodes"`
+}
+
+// ResourceConfig represents resource allocation
+type ResourceConfig struct {
+	CPU       string `json:"cpu"`
+	Memory    string `json:"memory"`
+	GPU       string `json:"gpu,omitempty"`
+	GPUType   string `json:"gpuType,omitempty"`
+}
+
+// StorageConfig represents storage configuration
+type StorageConfig struct {
+	PersistentVolumePath string `json:"persistentVolumePath,omitempty"`
+	Size                 string `json:"size,omitempty"`
+}
+
+// NetworkConfig represents network configuration
+type NetworkConfig struct {
+	HeadNodeIP    string `json:"headNodeIP,omitempty"`
+	DashboardPort string `json:"dashboardPort,omitempty"`
+	ClientPort    string `json:"clientPort,omitempty"`
+}
+
+// NodeConfig represents node configuration
+type NodeConfig struct {
+	Head    int32 `json:"head"`
+	Workers int32 `json:"workers"`
+}
+
+// DashboardURLResponse represents the response for dashboard URL
+type DashboardURLResponse struct {
+	URL       string `json:"url,omitempty"`
+	Available bool   `json:"available"`
+	Message   string `json:"message"`
+}
+
 // CreateEnvironmentRequest represents the request to create an environment
 type CreateEnvironmentRequest struct {
 	Name      string            `json:"name"`
@@ -618,6 +663,488 @@ func convertRayClusterToEnvironment(rayCluster *unstructured.Unstructured) Envir
 	}
 }
 
+// handleGetEnvironmentDetail gets detailed information about an environment
+func handleGetEnvironmentDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if currentClientset == nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Not connected to any cluster",
+		})
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	namespace := r.URL.Query().Get("namespace")
+	framework := r.URL.Query().Get("framework")
+	
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	if name == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Environment name is required",
+		})
+		return
+	}
+
+	ctx := context.Background()
+
+	// For Ray framework, get RayCluster details
+	if framework == "ray" {
+		detail, err := getRayClusterDetail(ctx, name, namespace)
+		if err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "Failed to get Ray cluster details: " + err.Error(),
+			})
+			return
+		}
+		respondJSON(w, http.StatusOK, detail)
+		return
+	}
+
+	// For other frameworks, get Deployment details
+	deployment, err := currentClientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "Environment not found",
+			})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to get environment: " + err.Error(),
+		})
+		return
+	}
+
+	detail := convertDeploymentToDetail(deployment)
+	respondJSON(w, http.StatusOK, detail)
+}
+
+// handleGetEnvironmentStatus gets the current status of an environment
+func handleGetEnvironmentStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if currentClientset == nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Not connected to any cluster",
+		})
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	namespace := r.URL.Query().Get("namespace")
+	framework := r.URL.Query().Get("framework")
+	
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	if name == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Environment name is required",
+		})
+		return
+	}
+
+	ctx := context.Background()
+
+	// For Ray framework, check RayCluster status
+	if framework == "ray" {
+		status, err := getRayClusterStatus(ctx, name, namespace)
+		if err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "Failed to get Ray cluster status: " + err.Error(),
+			})
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{
+			"status": status,
+		})
+		return
+	}
+
+	// For other frameworks, check Deployment status
+	deployment, err := currentClientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to get environment status: " + err.Error(),
+		})
+		return
+	}
+
+	status := getDeploymentStatus(deployment)
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status": status,
+	})
+}
+
+// handleGetDashboardURL generates the Ray Dashboard URL
+func handleGetDashboardURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if currentClientset == nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Not connected to any cluster",
+		})
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	namespace := r.URL.Query().Get("namespace")
+	
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	if name == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Environment name is required",
+		})
+		return
+	}
+
+	ctx := context.Background()
+
+	// Check if Ray cluster is running
+	status, err := getRayClusterStatus(ctx, name, namespace)
+	if err != nil {
+		respondJSON(w, http.StatusOK, DashboardURLResponse{
+			Available: false,
+			Message:   "Failed to check cluster status: " + err.Error(),
+		})
+		return
+	}
+
+	if status != "running" {
+		respondJSON(w, http.StatusOK, DashboardURLResponse{
+			Available: false,
+			Message:   fmt.Sprintf("Ray cluster is not running (status: %s)", status),
+		})
+		return
+	}
+
+	// Get the head service
+	serviceName := name + "-head-svc"
+	service, err := currentClientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		respondJSON(w, http.StatusOK, DashboardURLResponse{
+			Available: false,
+			Message:   "Dashboard service not found: " + err.Error(),
+		})
+		return
+	}
+
+	// Find dashboard port
+	dashboardPort := ""
+	for _, port := range service.Spec.Ports {
+		if port.Name == "dashboard" {
+			dashboardPort = fmt.Sprintf("%d", port.Port)
+			break
+		}
+	}
+
+	if dashboardPort == "" {
+		respondJSON(w, http.StatusOK, DashboardURLResponse{
+			Available: false,
+			Message:   "Dashboard port not found in service",
+		})
+		return
+	}
+
+	// For now, return the service information
+	// In production, you might want to set up port-forwarding or use an Ingress
+	clusterIP := service.Spec.ClusterIP
+	dashboardURL := fmt.Sprintf("http://%s:%s", clusterIP, dashboardPort)
+
+	respondJSON(w, http.StatusOK, DashboardURLResponse{
+		Available: true,
+		URL:       dashboardURL,
+		Message:   "Dashboard is available. Note: This is a cluster-internal URL. Use kubectl port-forward for external access.",
+	})
+}
+
+// getRayClusterDetail gets detailed information about a RayCluster
+func getRayClusterDetail(ctx context.Context, name, namespace string) (*EnvironmentDetail, error) {
+	if currentRestConfig == nil {
+		return nil, fmt.Errorf("REST config not available")
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(currentRestConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+
+	rayClusterGVR := schema.GroupVersionResource{
+		Group:    "ray.io",
+		Version:  "v1",
+		Resource: "rayclusters",
+	}
+
+	rayCluster, err := dynamicClient.Resource(rayClusterGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	metadata, _ := rayCluster.Object["metadata"].(map[string]interface{})
+	spec, _ := rayCluster.Object["spec"].(map[string]interface{})
+	status, _ := rayCluster.Object["status"].(map[string]interface{})
+
+	// Extract basic info
+	uid, _ := metadata["uid"].(string)
+	labels, _ := metadata["labels"].(map[string]interface{})
+	rayVersion, _ := spec["rayVersion"].(string)
+
+	// Extract image and resources from headGroupSpec
+	image := defaultRayImage
+	cpu := "0"
+	memory := "0"
+	gpu := ""
+	gpuType := ""
+
+	if headGroupSpec, ok := spec["headGroupSpec"].(map[string]interface{}); ok {
+		if template, ok := headGroupSpec["template"].(map[string]interface{}); ok {
+			if podSpec, ok := template["spec"].(map[string]interface{}); ok {
+				if containers, ok := podSpec["containers"].([]interface{}); ok && len(containers) > 0 {
+					if container, ok := containers[0].(map[string]interface{}); ok {
+						if img, ok := container["image"].(string); ok {
+							image = img
+						}
+						if resources, ok := container["resources"].(map[string]interface{}); ok {
+							if limits, ok := resources["limits"].(map[string]interface{}); ok {
+								if cpuLimit, ok := limits["cpu"].(string); ok {
+									cpu = cpuLimit
+								}
+								if memLimit, ok := limits["memory"].(string); ok {
+									memory = memLimit
+								}
+								if gpuLimit, ok := limits["nvidia.com/gpu"].(string); ok {
+									gpu = gpuLimit
+									gpuType = "nvidia-gpu"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Extract worker replicas
+	var workers int32 = 0
+	if workerGroupSpecs, ok := spec["workerGroupSpecs"].([]interface{}); ok && len(workerGroupSpecs) > 0 {
+		if workerGroup, ok := workerGroupSpecs[0].(map[string]interface{}); ok {
+			if r, ok := workerGroup["replicas"].(int64); ok {
+				workers = int32(r)
+			}
+		}
+	}
+
+	// Determine status
+	envStatus := "pending"
+	if status != nil {
+		if state, ok := status["state"].(string); ok {
+			switch state {
+			case "ready":
+				envStatus = "running"
+			case "failed":
+				envStatus = "error"
+			default:
+				envStatus = "pending"
+			}
+		}
+	}
+
+	// Get head node IP
+	headNodeIP := ""
+	dashboardPort := "8265"
+	clientPort := "10001"
+	
+	// Try to get the head service
+	serviceName := name + "-head-svc"
+	service, err := currentClientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err == nil {
+		headNodeIP = service.Spec.ClusterIP
+		for _, port := range service.Spec.Ports {
+			if port.Name == "dashboard" {
+				dashboardPort = fmt.Sprintf("%d", port.Port)
+			} else if port.Name == "client" {
+				clientPort = fmt.Sprintf("%d", port.Port)
+			}
+		}
+	}
+
+	// Convert labels
+	labelMap := make(map[string]string)
+	for k, v := range labels {
+		if strVal, ok := v.(string); ok {
+			labelMap[k] = strVal
+		}
+	}
+
+	// Get creation timestamp
+	createdAt := time.Now()
+	if creationTimestamp, ok := metadata["creationTimestamp"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, creationTimestamp); err == nil {
+			createdAt = t
+		}
+	}
+
+	// Extract Python version from image tag if possible
+	pythonVersion := "3.9"
+	if strings.Contains(image, "py38") {
+		pythonVersion = "3.8"
+	} else if strings.Contains(image, "py39") {
+		pythonVersion = "3.9"
+	} else if strings.Contains(image, "py310") {
+		pythonVersion = "3.10"
+	} else if strings.Contains(image, "py311") {
+		pythonVersion = "3.11"
+	}
+
+	detail := &EnvironmentDetail{
+		Environment: Environment{
+			ID:        uid,
+			Name:      name,
+			Framework: "ray",
+			Image:     image,
+			Replicas:  workers,
+			Status:    envStatus,
+			Namespace: namespace,
+			Labels:    labelMap,
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		},
+		RayVersion:    rayVersion,
+		PythonVersion: pythonVersion,
+		Resources: ResourceConfig{
+			CPU:     cpu,
+			Memory:  memory,
+			GPU:     gpu,
+			GPUType: gpuType,
+		},
+		Storage: StorageConfig{
+			PersistentVolumePath: "/tmp/ray",
+			Size:                 "10Gi",
+		},
+		Network: NetworkConfig{
+			HeadNodeIP:    headNodeIP,
+			DashboardPort: dashboardPort,
+			ClientPort:    clientPort,
+		},
+		Nodes: NodeConfig{
+			Head:    1,
+			Workers: workers,
+		},
+	}
+
+	return detail, nil
+}
+
+// getRayClusterStatus gets the status of a RayCluster
+func getRayClusterStatus(ctx context.Context, name, namespace string) (string, error) {
+	if currentRestConfig == nil {
+		return "", fmt.Errorf("REST config not available")
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(currentRestConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+
+	rayClusterGVR := schema.GroupVersionResource{
+		Group:    "ray.io",
+		Version:  "v1",
+		Resource: "rayclusters",
+	}
+
+	rayCluster, err := dynamicClient.Resource(rayClusterGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	status, _ := rayCluster.Object["status"].(map[string]interface{})
+	if status == nil {
+		return "pending", nil
+	}
+
+	if state, ok := status["state"].(string); ok {
+		switch state {
+		case "ready":
+			return "running", nil
+		case "failed":
+			return "error", nil
+		default:
+			return "pending", nil
+		}
+	}
+
+	return "pending", nil
+}
+
+// convertDeploymentToDetail converts a Deployment to EnvironmentDetail
+func convertDeploymentToDetail(dep *appsv1.Deployment) *EnvironmentDetail {
+	cpu := "0"
+	memory := "0"
+	gpu := ""
+	gpuType := ""
+
+	if len(dep.Spec.Template.Spec.Containers) > 0 {
+		container := dep.Spec.Template.Spec.Containers[0]
+		if limits := container.Resources.Limits; limits != nil {
+			if cpuLimit, ok := limits[corev1.ResourceCPU]; ok {
+				cpu = cpuLimit.String()
+			}
+			if memLimit, ok := limits[corev1.ResourceMemory]; ok {
+				memory = memLimit.String()
+			}
+		}
+	}
+
+	detail := &EnvironmentDetail{
+		Environment: Environment{
+			ID:        string(dep.UID),
+			Name:      dep.Name,
+			Framework: dep.Labels["rl-framework"],
+			Image:     getImageFromDeployment(dep),
+			Replicas:  *dep.Spec.Replicas,
+			Status:    getDeploymentStatus(dep),
+			Namespace: dep.Namespace,
+			Labels:    dep.Labels,
+			CreatedAt: dep.CreationTimestamp.Time,
+			UpdatedAt: dep.CreationTimestamp.Time,
+		},
+		Resources: ResourceConfig{
+			CPU:     cpu,
+			Memory:  memory,
+			GPU:     gpu,
+			GPUType: gpuType,
+		},
+		Storage: StorageConfig{
+			PersistentVolumePath: "/data",
+			Size:                 "10Gi",
+		},
+		Network: NetworkConfig{},
+		Nodes: NodeConfig{
+			Head:    0,
+			Workers: *dep.Spec.Replicas,
+		},
+	}
+
+	return detail
+}
+
 // createRayCluster creates a KubeRay RayCluster resource using dynamic client
 func createRayCluster(ctx context.Context, name, namespace, image string, workers int32, labels map[string]string) error {
 	// Create dynamic client
@@ -663,12 +1190,12 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 									},
 									"resources": map[string]interface{}{
 										"requests": map[string]interface{}{
-											"cpu":    "100m",
-											"memory": "256Mi",
+											"cpu":    "500m",
+											"memory": "1Gi",
 										},
 										"limits": map[string]interface{}{
-											"cpu":    "500m",
-											"memory": "512Mi",
+											"cpu":    "2000m",
+											"memory": "4Gi",
 										},
 									},
 								},
@@ -693,12 +1220,12 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 										"image": image,
 										"resources": map[string]interface{}{
 											"requests": map[string]interface{}{
-												"cpu":    "100m",
-												"memory": "256Mi",
+												"cpu":    "200m",
+												"memory": "512Mi",
 											},
 											"limits": map[string]interface{}{
-												"cpu":    "500m",
-												"memory": "512Mi",
+												"cpu":    "1000m",
+												"memory": "1Gi",
 											},
 										},
 									},

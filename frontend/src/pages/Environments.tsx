@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Tag, Space, Card, MessagePlugin, Dialog, InputNumber } from 'tdesign-react';
+import { useNavigate } from 'react-router-dom';
+import { Table, Button, Tag, Space, Card, MessagePlugin, Dialog, DialogPlugin, InputNumber, Select } from 'tdesign-react';
 import { AddIcon, RefreshIcon } from 'tdesign-icons-react';
 import CreateEnvironmentDialog from '../components/CreateEnvironmentDialog';
 
@@ -15,17 +16,24 @@ interface RLEnvironment {
 }
 
 const Environments: React.FC = () => {
+  const navigate = useNavigate();
   const [environments, setEnvironments] = useState<RLEnvironment[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [scaleDialogVisible, setScaleDialogVisible] = useState(false);
   const [scaleEnv, setScaleEnv] = useState<RLEnvironment | null>(null);
   const [scaleReplicas, setScaleReplicas] = useState(1);
+  const [selectedNamespace, setSelectedNamespace] = useState('default');
+
+  const namespaceOptions = [
+    { label: 'default', value: 'default' },
+    { label: 'ray-test', value: 'ray-test' },
+  ];
 
   const fetchEnvironments = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/api/environments?namespace=default');
+      const response = await fetch(`http://localhost:8080/api/environments?namespace=${selectedNamespace}`);
       if (response.ok) {
         const data = await response.json();
         setEnvironments(data || []);
@@ -39,41 +47,40 @@ const Environments: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedNamespace]);
 
   useEffect(() => {
     fetchEnvironments();
-  }, [fetchEnvironments]);
+  }, [fetchEnvironments, selectedNamespace]);
 
-  const handleDelete = async (env: RLEnvironment) => {
-    const confirmed = await Dialog.confirm({
+  const handleDelete = (env: RLEnvironment) => {
+    DialogPlugin.confirm({
       header: 'Delete Environment',
       body: `Are you sure you want to delete environment "${env.name}"? This action cannot be undone.`,
       confirmBtn: 'Delete',
       cancelBtn: 'Cancel',
       theme: 'warning',
-    });
+      onConfirm: async () => {
+        try {
+          const response = await fetch(
+            `http://localhost:8080/api/environments/delete?name=${env.name}&namespace=${env.namespace}&framework=${env.framework}`,
+            {
+              method: 'DELETE',
+            }
+          );
 
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(
-        `http://localhost:8080/api/environments/delete?name=${env.name}&namespace=${env.namespace}&framework=${env.framework}`,
-        {
-          method: 'DELETE',
+          if (response.ok) {
+            MessagePlugin.success(`Environment ${env.name} deleted successfully`);
+            fetchEnvironments();
+          } else {
+            const error = await response.json();
+            MessagePlugin.error(error.error || 'Failed to delete environment');
+          }
+        } catch (error) {
+          MessagePlugin.error('Network error: ' + (error as Error).message);
         }
-      );
-
-      if (response.ok) {
-        MessagePlugin.success(`Environment ${env.name} deleted successfully`);
-        fetchEnvironments();
-      } else {
-        const error = await response.json();
-        MessagePlugin.error(error.error || 'Failed to delete environment');
-      }
-    } catch (error) {
-      MessagePlugin.error('Network error: ' + (error as Error).message);
-    }
+      },
+    });
   };
 
   const handleScale = (env: RLEnvironment) => {
@@ -112,13 +119,27 @@ const Environments: React.FC = () => {
     }
   };
 
+  const handleViewDetail = (env: RLEnvironment) => {
+    navigate(`/environments/${env.id}?name=${env.name}&namespace=${env.namespace}&framework=${env.framework}`);
+  };
+
   const columns = [
     {
       colKey: 'name',
       title: 'Environment Name',
       width: 200,
       cell: ({ row }: { row: RLEnvironment }) => (
-        <span style={{ fontWeight: '500', color: 'var(--tc-text-primary)' }}>{row.name}</span>
+        <span 
+          style={{ 
+            fontWeight: '500', 
+            color: 'var(--tc-brand-color)', 
+            cursor: 'pointer',
+            textDecoration: 'underline'
+          }}
+          onClick={() => handleViewDetail(row)}
+        >
+          {row.name}
+        </span>
       ),
     },
     {
@@ -132,8 +153,9 @@ const Environments: React.FC = () => {
           stopped: 'default',
           error: 'danger',
         };
+        const theme = themeMap[row.status] as 'default' | 'warning' | 'danger' | 'success' | 'primary' | undefined;
         return (
-          <Tag theme={themeMap[row.status] || 'default'} variant="light">
+          <Tag theme={theme || 'default'} variant="light">
             {row.status}
           </Tag>
         );
@@ -198,6 +220,13 @@ const Environments: React.FC = () => {
         style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
         actions={
           <Space>
+            <Select
+              value={selectedNamespace}
+              onChange={(value) => setSelectedNamespace(value as string)}
+              options={namespaceOptions}
+              style={{ width: '150px' }}
+              placeholder="Select Namespace"
+            />
             <Button icon={<RefreshIcon />} variant="outline" onClick={fetchEnvironments} loading={loading}>
               Refresh
             </Button>

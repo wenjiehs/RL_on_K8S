@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/cors"
@@ -64,10 +65,13 @@ func main() {
 	mux.HandleFunc("/api/environments/create", handleCreateEnvironment)
 	mux.HandleFunc("/api/environments/delete", handleDeleteEnvironment)
 	mux.HandleFunc("/api/environments/scale", handleScaleEnvironment)
+	mux.HandleFunc("/api/environments/detail", handleGetEnvironmentDetail)
+	mux.HandleFunc("/api/environments/status", handleGetEnvironmentStatus)
+	mux.HandleFunc("/api/environments/dashboard-url", handleGetDashboardURL)
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:5175"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -207,6 +211,17 @@ func handleClusterConnect(w http.ResponseWriter, r *http.Request) {
 	pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{Limit: 1})
 	if err != nil {
 		log.Printf("Connection failed: %v", err)
+		
+		// Check if it's an exec plugin authentication error
+		errorMsg := err.Error()
+		if strings.Contains(errorMsg, "exec:") && strings.Contains(errorMsg, "failed with exit code") {
+			respondJSON(w, http.StatusUnauthorized, ClusterStatus{
+				Connected: false,
+				Message:   "Authentication failed: The kubeconfig uses an exec plugin that requires pre-authentication. Please login first using the appropriate command (e.g., 'kubectl ianvs login <cluster-id> --expired=1h') before connecting. Error: " + err.Error(),
+			})
+			return
+		}
+		
 		respondJSON(w, http.StatusUnauthorized, ClusterStatus{
 			Connected: false,
 			Message:   "Failed to connect to cluster: " + err.Error(),

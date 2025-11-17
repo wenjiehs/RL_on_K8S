@@ -160,7 +160,7 @@ const CreateEnvironmentDialog: React.FC<CreateEnvironmentDialogProps> = ({ visib
           </div>
           <Select
             value={framework}
-            onChange={handleFrameworkChange}
+            onChange={(value) => handleFrameworkChange(value as string)}
             options={frameworkOptions}
             style={{ width: '100%' }}
           />
