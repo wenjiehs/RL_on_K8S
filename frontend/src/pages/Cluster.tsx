@@ -82,7 +82,6 @@ const Cluster: React.FC = () => {
 
       {!clusterInfo.connected ? (
         <Empty
-          icon={<CloudIcon size="64px" />}
           description={
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--tc-text-primary)', marginBottom: '8px' }}>

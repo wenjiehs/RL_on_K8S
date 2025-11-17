@@ -69,6 +69,9 @@ func main() {
 	mux.HandleFunc("/api/environments/status", handleGetEnvironmentStatus)
 	mux.HandleFunc("/api/environments/dashboard-url", handleGetDashboardURL)
 	
+	// Terminal routes
+	mux.HandleFunc("/api/terminal/connect", handleTerminalConnect)
+	
 	// CORS middleware
 	handler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:5175"},

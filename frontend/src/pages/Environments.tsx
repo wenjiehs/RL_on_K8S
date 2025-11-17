@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Table, Button, Tag, Space, Card, MessagePlugin, Dialog, DialogPlugin, InputNumber, Select } from 'tdesign-react';
-import { AddIcon, RefreshIcon } from 'tdesign-icons-react';
+import { AddIcon, RefreshIcon, TerminalIcon } from 'tdesign-icons-react';
 import CreateEnvironmentDialog from '../components/CreateEnvironmentDialog';
+import WebTerminal from '../components/WebTerminal';
 
 interface RLEnvironment {
   id: string;
@@ -24,6 +25,8 @@ const Environments: React.FC = () => {
   const [scaleEnv, setScaleEnv] = useState<RLEnvironment | null>(null);
   const [scaleReplicas, setScaleReplicas] = useState(1);
   const [selectedNamespace, setSelectedNamespace] = useState('default');
+  const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalEnv, setTerminalEnv] = useState<RLEnvironment | null>(null);
 
   const namespaceOptions = [
     { label: 'default', value: 'default' },
@@ -123,6 +126,19 @@ const Environments: React.FC = () => {
     navigate(`/environments/${env.id}?name=${env.name}&namespace=${env.namespace}&framework=${env.framework}`);
   };
 
+  const handleConnectTerminal = (env: RLEnvironment) => {
+    if (env.status !== 'running') {
+      MessagePlugin.warning('Only running environments can be connected');
+      return;
+    }
+    if (env.framework !== 'ray') {
+      MessagePlugin.warning('Terminal connection is only available for Ray environments');
+      return;
+    }
+    setTerminalEnv(env);
+    setTerminalVisible(true);
+  };
+
   const columns = [
     {
       colKey: 'name',
@@ -198,9 +214,21 @@ const Environments: React.FC = () => {
     {
       colKey: 'actions',
       title: 'Actions',
-      width: 200,
+      width: 280,
       cell: ({ row }: { row: RLEnvironment }) => (
         <Space size="small">
+          {row.framework === 'ray' && (
+            <Button 
+              theme="primary" 
+              variant="text" 
+              size="small" 
+              icon={<TerminalIcon />}
+              onClick={() => handleConnectTerminal(row)}
+              disabled={row.status !== 'running'}
+            >
+              Terminal
+            </Button>
+          )}
           <Button theme="primary" variant="text" size="small" onClick={() => handleScale(row)}>
             Scale
           </Button>
@@ -286,6 +314,18 @@ const Environments: React.FC = () => {
           />
         </div>
       </Dialog>
+
+      {terminalEnv && (
+        <WebTerminal
+          visible={terminalVisible}
+          onClose={() => {
+            setTerminalVisible(false);
+            setTerminalEnv(null);
+          }}
+          envName={terminalEnv.name}
+          namespace={terminalEnv.namespace}
+        />
+      )}
     </>
   );
 };
