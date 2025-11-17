@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import './global.css'
-import 'tdesign-react/es/style/index.js'
+import 'tdesign-react/esm/style/index.js'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -13,8 +13,9 @@ import {
   CloseCircleIcon,
 } from 'tdesign-icons-react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, DataManagement, Monitoring } from './pages';
+import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, Monitoring, DataManagement } from './pages';
 import Cluster from './pages/Cluster';
+import TestTabs from './pages/TestTabs';
 import ClusterConfigDialog from './components/ClusterConfigDialog';
 
 interface ClusterStatus {
@@ -83,11 +84,11 @@ const AppContent = () => {
           <Menu.MenuItem value="environments" icon={<ServerIcon />}>
             Environments
           </Menu.MenuItem>
-          <Menu.MenuItem value="training" icon={<ControlPlatformIcon />}>
-            Training Jobs
-          </Menu.MenuItem>
           <Menu.MenuItem value="data" icon={<DataIcon />}>
             Data Management
+          </Menu.MenuItem>
+          <Menu.MenuItem value="training" icon={<ControlPlatformIcon />}>
+            Training Jobs
           </Menu.MenuItem>
           <Menu.MenuItem value="monitoring" icon={<ChartIcon />}>
             Monitoring
@@ -127,10 +128,11 @@ const AppContent = () => {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/environments" element={<Environments />} />
               <Route path="/environments/:id" element={<EnvironmentDetail />} />
-              <Route path="/training" element={<TrainingJobs />} />
               <Route path="/data" element={<DataManagement />} />
+              <Route path="/training" element={<TrainingJobs />} />
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/cluster" element={<Cluster />} />
+              <Route path="/test-tabs" element={<TestTabs />} />
             </Routes>
           </div>
         </Layout.Content>

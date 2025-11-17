@@ -14,6 +14,7 @@ import (
 	"github.com/rs/cors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -71,6 +72,19 @@ func main() {
 	
 	// Terminal routes
 	mux.HandleFunc("/api/terminal/connect", handleTerminalConnect)
+	
+	// Dataset routes
+	mux.HandleFunc("/api/datasets", handleListDatasets)
+	mux.HandleFunc("/api/datasets/create", handleCreateDataset)
+	mux.HandleFunc("/api/datasets/delete", handleDeleteDataset)
+	mux.HandleFunc("/api/datasets/upload", handleUploadFile)
+	mux.HandleFunc("/api/datasets/stats", handleGetDatasetStats)
+	mux.HandleFunc("/api/datasets/browse", handleBrowseDirectory)
+	mux.HandleFunc("/api/datasets/tree", handleGetDirectoryTree)
+	mux.HandleFunc("/api/datasets/download", handleDownloadFile)
+	mux.HandleFunc("/api/datasets/file/delete", handleDeleteFile)
+	mux.HandleFunc("/api/datasets/preview", handlePreviewFile)
+	mux.HandleFunc("/api/datasets/preview/parquet", handlePreviewParquet)
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{
@@ -331,4 +345,16 @@ func getContextNames(config *clientcmdapi.Config) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func getDynamicClient() dynamic.Interface {
+	if currentRestConfig == nil {
+		return nil
+	}
+	client, err := dynamic.NewForConfig(currentRestConfig)
+	if err != nil {
+		log.Printf("Failed to create dynamic client: %v", err)
+		return nil
+	}
+	return client
 }

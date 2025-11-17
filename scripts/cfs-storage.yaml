@@ -1,0 +1,56 @@
+---
+# PersistentVolume for CFS Turbo
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cfs-rl-data-pv
+  labels:
+    app: rl-console
+    storage-type: cfs-turbo
+spec:
+  capacity:
+    storage: 10Ti  # CFS Turbo 容量，根据实际购买容量调整
+  accessModes:
+    - ReadWriteMany  # 支持多Pod同时读写
+  persistentVolumeReclaimPolicy: Retain  # 保留数据，不自动删除
+  storageClassName: cfs-turbo
+  mountOptions:
+    - vers=4.0  # NFS v4.0
+    - noresvport
+    - nolock
+    - proto=tcp
+    - timeo=600
+    - retrans=2
+    - hard
+  nfs:
+    server: 10.32.5.135  # CFS挂载点IP
+    path: /  # CFS根目录
+
+---
+# PersistentVolumeClaim for RL Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cfs-rl-data-pvc
+  namespace: default
+  labels:
+    app: rl-console
+    storage-type: cfs-turbo
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: cfs-turbo
+  resources:
+    requests:
+      storage: 10Ti  # 与PV容量一致
+  volumeName: cfs-rl-data-pv  # 绑定到指定PV
+
+---
+# StorageClass for CFS Turbo (可选，用于动态provisioning)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: cfs-turbo
+provisioner: kubernetes.io/no-provisioner  # 静态provisioning
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain

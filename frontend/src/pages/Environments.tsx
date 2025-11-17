@@ -242,8 +242,11 @@ const Environments: React.FC = () => {
 
   return (
     <>
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '600' }}>Environment Management</h2>
+      </div>
+
       <Card
-        title="Environment Management"
         bordered={false}
         style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
         actions={

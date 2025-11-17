@@ -1,0 +1,35 @@
+---
+# Simple test pod with alpine
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cfs-simple-test
+  namespace: default
+spec:
+  containers:
+  - name: alpine
+    image: ccr.ccs.tencentyun.com/tkeimages/alpine:3.14
+    command: ["sh", "-c"]
+    args:
+      - |
+        echo "=== CFS Mount Test ==="
+        echo "Mounted at: /cfs"
+        df -h /cfs
+        echo ""
+        echo "Creating test directory..."
+        mkdir -p /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)
+        echo "Test file content" > /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)/test.txt
+        echo ""
+        echo "Directory structure:"
+        ls -lR /cfs/rl-data/ || echo "Directory not accessible"
+        echo ""
+        echo "=== Test completed. Sleeping... ==="
+        sleep 3600
+    volumeMounts:
+    - name: cfs-storage
+      mountPath: /cfs
+  volumes:
+  - name: cfs-storage
+    persistentVolumeClaim:
+      claimName: cfs-rl-data-pvc
+  restartPolicy: Never

@@ -1,0 +1,49 @@
+---
+# Test Pod to verify CFS mount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cfs-test-pod
+  namespace: default
+  labels:
+    app: cfs-test
+spec:
+  containers:
+  - name: test
+    image: ccr.ccs.tencentyun.com/tkeimages/busybox:latest
+    command:
+      - sh
+      - -c
+      - |
+        echo "=== CFS Mount Test ==="
+        echo "Mounted at: /cfs"
+        echo ""
+        echo "Creating test directory structure..."
+        mkdir -p /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/train/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/eval/$(date +%Y-%m-%d)
+        mkdir -p /cfs/rl-data/test-exp/model/$(date +%Y-%m-%d)
+        
+        echo "Writing test files..."
+        echo "Test raw data" > /cfs/rl-data/test-exp/raw/$(date +%Y-%m-%d)/test.txt
+        echo "Test training data" > /cfs/rl-data/test-exp/train/$(date +%Y-%m-%d)/test.txt
+        
+        echo ""
+        echo "Directory structure:"
+        ls -lR /cfs/rl-data/
+        
+        echo ""
+        echo "Disk usage:"
+        df -h /cfs
+        
+        echo ""
+        echo "=== Test completed. Sleeping... ==="
+        sleep 3600
+    volumeMounts:
+    - name: cfs-storage
+      mountPath: /cfs
+  volumes:
+  - name: cfs-storage
+    persistentVolumeClaim:
+      claimName: cfs-rl-data-pvc
+  restartPolicy: Never

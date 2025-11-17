@@ -1,0 +1,20 @@
+---
+# Quick test using existing working PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quick-cfs-test
+  namespace: default
+spec:
+  containers:
+  - name: test
+    image: ubuntu:20.04
+    command: ["sh", "-c", "echo 'Testing CFS mount...'; df -h /cfs; ls -la /cfs/; sleep 300"]
+    volumeMounts:
+    - name: cfs
+      mountPath: /cfs
+  volumes:
+  - name: cfs
+    persistentVolumeClaim:
+      claimName: ai-model
+  restartPolicy: Never

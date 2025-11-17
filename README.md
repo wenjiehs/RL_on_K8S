@@ -1,6 +1,6 @@
 # RL on K8S - 强化学习云控制台系统
 
-基于Kubernetes的强化学习训练环境管理平台，提供可视化的集群管理、环境配置和训练任务监控功能。
+基于Kubernetes的强化学习训练环境管理平台，提供可视化的集群管理、环境配置、数据管理和训练任务监控功能。
 
 ## 🌟 核心特性
 
@@ -16,16 +16,31 @@
 - ✅ 环境CRUD操作（创建、查看、删除、扩缩容）
 - ✅ 环境详情页（详细配置信息展示）
 - ✅ Ray Dashboard一键连接
+- ✅ Web终端连接Ray Head节点（浏览器内Shell交互）
 - ✅ 实时状态监控（自动刷新）
 - ✅ Namespace切换支持
 - ✅ 名称自动规范化
 - ✅ 资源优化配置（适配资源受限集群）
+
+### 数据管理
+- ✅ 统一的Data Management页面（Tab组件整合）
+- ✅ 数据集CRUD操作（创建、列表查看、删除）
+- ✅ 三级分层存储架构（/cfs/rl-data/{experiment_id}/{data_type}/{date}/）
+- ✅ 四种数据类型分类管理（raw/train/eval/model）
+- ✅ 数据集统计可视化（存储占用、类型分布）
+- ✅ 文件浏览器（目录导航、文件列表、列表/网格视图切换）
+- ✅ 文件操作（下载、删除、预览）
+- ✅ 文本文件预览（支持txt/log/json/yaml/md/py/sh等）
+- ✅ 图片文件预览
+- ✅ Parquet文件预览（Schema展示、数据表格、分页加载）
+- ✅ 腾讯云CFS Turbo集成（NFS v4.0挂载）
 
 ### 用户体验
 - ✅ 现代化UI设计（基于TDesign）
 - ✅ 响应式布局
 - ✅ 友好的错误提示
 - ✅ 实时状态更新
+- ✅ 浏览器内终端（xterm.js）
 
 ## 🏗️ 技术架构
 
@@ -36,44 +51,63 @@
 - **路由**: React Router v6
 - **图表**: Recharts
 - **图标**: TDesign Icons + Lucide React
+- **终端**: xterm.js + xterm-addon-fit
 
 ### 后端
 - **语言**: Go 1.21+
 - **框架**: 标准库 net/http
 - **K8s客户端**: client-go + dynamic client
+- **WebSocket**: Gorilla WebSocket
+- **数据解析**: parquet-go (xitongsys/parquet-go v1.6.2)
 - **CORS**: rs/cors
 
 ### Kubernetes
 - **版本**: v1.28+
 - **CRD**: KubeRay Operator v1.5.0-rc.0
-- **资源**: RayCluster、Deployment、Service
+- **资源**: RayCluster、Deployment、Service、PV/PVC
+- **存储**: 腾讯云CFS Turbo (NFS v4.0)
 
 ## 📦 项目结构
 
 ```
 RL_on_K8S/
 ├── cmd/
-│   └── api-server/          # API服务器入口
-│       ├── main.go          # 主程序和路由
-│       └── environment.go   # 环境管理逻辑
+│   └── api-server/              # API服务器入口
+│       ├── main.go              # 主程序和路由
+│       ├── environment.go       # 环境管理逻辑
+│       ├── dataset.go           # 数据集管理逻辑
+│       ├── file.go              # 文件操作逻辑
+│       └── terminal.go          # Web终端逻辑
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # React组件
+│   │   ├── components/          # React组件
 │   │   │   ├── ClusterConfigDialog.tsx
-│   │   │   └── CreateEnvironmentDialog.tsx
-│   │   └── pages/           # 页面组件
+│   │   │   ├── CreateEnvironmentDialog.tsx
+│   │   │   ├── DatasetList.tsx
+│   │   │   ├── StorageStats.tsx
+│   │   │   ├── FileBrowser.tsx
+│   │   │   ├── FilePreview.tsx
+│   │   │   └── Terminal.tsx
+│   │   └── pages/               # 页面组件
 │   │       ├── Cluster.tsx
 │   │       ├── Dashboard.tsx
 │   │       ├── Environments.tsx
-│   │       └── EnvironmentDetail.tsx
+│   │       ├── EnvironmentDetail.tsx
+│   │       ├── DataManagement.tsx
+│   │       ├── TrainingJobs.tsx
+│   │       └── Monitoring.tsx
 │   ├── package.json
 │   └── vite.config.ts
-├── docs/                    # 文档目录
-│   ├── ENVIRONMENT_DETAIL_TESTING.md
-│   ├── ENVIRONMENT_DETAIL_TROUBLESHOOTING.md
-│   ├── IMPLEMENTATION_SUMMARY.md
-│   └── QUICK_TEST_GUIDE.md
-├── scripts/                 # 脚本目录
+├── api/
+│   └── v1alpha1/                # CRD定义
+│       └── dataset_types.go
+├── docs/                        # 文档目录
+│   ├── DEPLOYMENT_GUIDE.md
+│   ├── DATA_MANAGEMENT_MERGE.md
+│   └── ...
+├── scripts/                     # 脚本目录
+│   ├── generate_test_data.py
+│   └── ...
 ├── go.mod
 ├── go.sum
 └── README.md
@@ -88,6 +122,7 @@ RL_on_K8S/
 - Kubernetes集群（v1.28+）
 - KubeRay Operator（可选，用于Ray环境）
 - kubectl配置文件
+- 腾讯云CFS Turbo（可选，用于数据持久化）
 
 ### 安装KubeRay Operator（可选）
 
@@ -99,6 +134,19 @@ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?re
 
 # 验证安装
 kubectl get pods -n ray-system
+```
+
+### 配置CFS存储（可选）
+
+如果需要使用数据管理功能，请配置CFS存储：
+
+```bash
+# 创建PV和PVC
+kubectl apply -f scripts/cfs-pv.yaml
+kubectl apply -f scripts/cfs-pvc.yaml
+
+# 验证挂载
+kubectl get pv,pvc -n default
 ```
 
 ### 后端启动
@@ -113,10 +161,11 @@ go mod download
 
 # 3. 编译API服务器
 cd cmd/api-server
-go build -o /tmp/api-server .
+go build -o ../../bin/api-server .
 
 # 4. 启动服务器
-nohup /tmp/api-server > /tmp/api-server.log 2>&1 &
+cd ../..
+nohup ./bin/api-server > backend.log 2>&1 &
 
 # 5. 验证服务
 curl http://localhost:8080/api/cluster/status
@@ -178,21 +227,51 @@ kubectl ianvs login <cluster-id> --expired=1h
    - 网络信息（Head节点IP、Dashboard端口等）
 3. 实时状态监控（每5秒自动刷新）
 
-### 4. 连接Ray Dashboard
+### 4. 使用Web终端
 
-对于Ray环境，可以通过以下步骤连接Dashboard：
+对于Ray环境，可以直接在浏览器中连接到Head节点：
 
-1. 在环境详情页找到 "Ray Dashboard连接" 区域
-2. 确保环境状态为 "运行中"
-3. 复制显示的port-forward命令
-4. 在终端执行命令：
-   ```bash
-   kubectl port-forward -n <namespace> svc/<env-name>-head-svc 8265:8265
-   ```
-5. 点击 "打开Dashboard" 按钮
-6. 在新标签页中访问Ray Dashboard
+1. 在环境列表中点击 "Terminal" 按钮
+2. 等待终端连接建立
+3. 在浏览器内执行Shell命令
+4. 支持终端尺寸自适应
+5. 支持复制粘贴（Ctrl+Shift+C/V）
 
-### 5. 环境管理操作
+### 5. 数据管理
+
+#### 创建数据集
+
+1. 点击 "Data Management" 导航菜单
+2. 在 "Datasets" Tab中点击 "Create Dataset"
+3. 填写数据集信息：
+   - **Name**: 数据集名称
+   - **Experiment ID**: 实验标识
+   - **Data Type**: 数据类型（raw/train/eval/model）
+   - **Description**: 描述信息
+4. 点击 "Create Dataset" 创建
+
+#### 浏览文件
+
+1. 在数据集列表中点击 "Browse" 按钮
+2. 使用文件浏览器：
+   - 左侧：快速导航面板
+   - 右侧：文件列表（支持列表/网格视图切换）
+3. 支持的操作：
+   - 下载文件
+   - 删除文件
+   - 预览文件（文本、图片、Parquet）
+
+#### 查看存储统计
+
+1. 切换到 "Storage Statistics" Tab
+2. 查看统计信息：
+   - 总数据集数量
+   - 总存储容量
+   - 各类型数据集分布
+   - 存储占用可视化
+   - 最近上传记录
+
+### 6. 环境管理操作
 
 #### 扩缩容
 1. 在环境列表中点击 "Scale" 按钮
@@ -211,11 +290,13 @@ kubectl ianvs login <cluster-id> --expired=1h
 API服务器默认配置：
 - **端口**: 8080
 - **CORS**: 允许 localhost:5173, 5174, 5175
-- **日志**: /tmp/api-server.log
+- **日志**: backend.log
+- **CFS路径**: /cfs/rl-data
 
 可通过环境变量修改：
 ```bash
 export PORT=8080
+export CFS_BASE_PATH=/cfs/rl-data
 ```
 
 ### 前端配置
@@ -240,6 +321,23 @@ export default defineConfig({
   - CPU: 1000m
   - Memory: 2Gi
 
+### CFS存储配置
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cfs-pv
+spec:
+  capacity:
+    storage: 35Ti
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: 10.32.5.135
+    path: /83d8ea56/cfs
+```
+
 ## 📚 API文档
 
 ### 集群管理
@@ -247,168 +345,90 @@ export default defineConfig({
 #### POST /api/cluster/connect
 连接到Kubernetes集群
 
-**请求体**:
-```json
-{
-  "kubeConfig": "base64编码的kubeconfig内容",
-  "context": "要使用的context名称"
-}
-```
-
-**响应**:
-```json
-{
-  "connected": true,
-  "message": "Successfully connected to cluster",
-  "clusterName": "cluster-name",
-  "context": "context-name"
-}
-```
-
 #### GET /api/cluster/status
 获取集群连接状态
 
-**响应**:
-```json
-{
-  "connected": true,
-  "message": "Connected",
-  "clusterName": "cluster-name",
-  "context": "context-name"
-}
-```
-
 #### GET /api/cluster/stats
 获取集群统计信息
-
-**响应**:
-```json
-{
-  "totalPods": 100,
-  "runningPods": 95,
-  "namespaces": 10
-}
-```
 
 ### 环境管理
 
 #### GET /api/environments
 列出所有环境
 
-**查询参数**:
-- `namespace`: 命名空间（可选，默认为所有）
-
-**响应**:
-```json
-[
-  {
-    "id": "uuid",
-    "name": "env-name",
-    "framework": "ray",
-    "image": "rayproject/ray:2.9.0",
-    "replicas": 2,
-    "status": "running",
-    "namespace": "default",
-    "createdAt": "2025-11-17T10:00:00Z"
-  }
-]
-```
-
 #### POST /api/environments/create
 创建新环境
-
-**请求体**:
-```json
-{
-  "name": "my-env",
-  "framework": "ray",
-  "image": "rayproject/ray:2.9.0",
-  "replicas": 2,
-  "namespace": "default"
-}
-```
 
 #### DELETE /api/environments/delete
 删除环境
 
-**查询参数**:
-- `name`: 环境名称
-- `namespace`: 命名空间
-- `framework`: 框架类型
-
 #### POST /api/environments/scale
 扩缩容环境
-
-**查询参数**:
-- `name`: 环境名称
-- `namespace`: 命名空间
-- `framework`: 框架类型
-
-**请求体**:
-```json
-{
-  "replicas": 3
-}
-```
 
 #### GET /api/environments/detail
 获取环境详情
 
-**查询参数**:
-- `name`: 环境名称
-- `namespace`: 命名空间
-- `framework`: 框架类型
-
-**响应**:
-```json
-{
-  "id": "uuid",
-  "name": "env-name",
-  "framework": "ray",
-  "status": "running",
-  "rayVersion": "2.9.0",
-  "pythonVersion": "3.9",
-  "resources": {
-    "cpu": "1000m",
-    "memory": "4Gi"
-  },
-  "network": {
-    "headNodeIP": "10.x.x.x",
-    "dashboardPort": "8265"
-  }
-}
-```
-
 #### GET /api/environments/status
 获取环境状态
-
-**查询参数**:
-- `name`: 环境名称
-- `namespace`: 命名空间
-- `framework`: 框架类型
-
-**响应**:
-```json
-{
-  "status": "running"
-}
-```
 
 #### GET /api/environments/dashboard-url
 获取Dashboard访问信息
 
-**查询参数**:
-- `name`: 环境名称
-- `namespace`: 命名空间
+### 数据管理
 
-**响应**:
-```json
-{
-  "available": true,
-  "url": "http://cluster-ip:8265",
-  "message": "Dashboard is available"
-}
-```
+#### GET /api/datasets
+列出所有数据集
+
+**查询参数**:
+- `namespace`: 命名空间
+- `dataType`: 数据类型（可选）
+- `experimentId`: 实验ID（可选）
+
+#### POST /api/datasets/create
+创建新数据集
+
+#### DELETE /api/datasets/delete
+删除数据集
+
+#### GET /api/datasets/stats
+获取存储统计信息
+
+### 文件管理
+
+#### GET /api/files/list
+列出目录文件
+
+**查询参数**:
+- `namespace`: 命名空间
+- `path`: 目录路径
+
+#### GET /api/files/download
+下载文件
+
+**查询参数**:
+- `namespace`: 命名空间
+- `path`: 文件路径
+
+#### DELETE /api/files/delete
+删除文件
+
+#### GET /api/files/preview
+预览文件
+
+**查询参数**:
+- `namespace`: 命名空间
+- `path`: 文件路径
+- `type`: 文件类型（text/image/parquet）
+
+### Web终端
+
+#### WebSocket /api/terminal/ws
+建立终端连接
+
+**查询参数**:
+- `namespace`: 命名空间
+- `pod`: Pod名称
+- `container`: 容器名称（可选）
 
 ## 🐛 故障排查
 
@@ -429,10 +449,11 @@ kubectl ianvs login <cluster-id> --expired=1h
 
 **解决方案**:
 ```bash
-pkill -f "/tmp/api-server"
+pkill -f "api-server"
 cd cmd/api-server
-go build -o /tmp/api-server .
-nohup /tmp/api-server > /tmp/api-server.log 2>&1 &
+go build -o ../../bin/api-server .
+cd ../..
+nohup ./bin/api-server > backend.log 2>&1 &
 ```
 
 #### 3. CORS错误
@@ -453,26 +474,38 @@ nohup /tmp/api-server > /tmp/api-server.log 2>&1 &
 2. 查看集群资源
 3. 创建所需命名空间
 
+#### 5. 文件预览失败
+
+**可能原因**:
+- CFS未正确挂载
+- 文件路径不存在
+- 文件格式不支持
+
+**解决方案**:
+1. 检查PV/PVC状态
+2. 验证文件路径
+3. 查看后端日志
+
 ### 日志查看
 
 ```bash
 # API服务器日志
-tail -f /tmp/api-server.log
+tail -f backend.log
 
 # 浏览器控制台
 # 打开开发者工具 (F12) -> Console
 ```
 
 详细的故障排查指南请参考：
-- [环境详情功能故障排查](docs/ENVIRONMENT_DETAIL_TROUBLESHOOTING.md)
-- [快速测试指南](docs/QUICK_TEST_GUIDE.md)
+- [部署指南](docs/DEPLOYMENT_GUIDE.md)
+- [数据管理合并说明](docs/DATA_MANAGEMENT_MERGE.md)
 
 ## 📝 开发文档
 
+- [部署指南](docs/DEPLOYMENT_GUIDE.md)
+- [数据管理页面合并说明](docs/DATA_MANAGEMENT_MERGE.md)
 - [环境详情功能测试指南](docs/ENVIRONMENT_DETAIL_TESTING.md)
 - [实施总结](docs/IMPLEMENTATION_SUMMARY.md)
-- [快速测试指南](docs/QUICK_TEST_GUIDE.md)
-- [故障排查指南](docs/ENVIRONMENT_DETAIL_TROUBLESHOOTING.md)
 
 ## 🗺️ 路线图
 
@@ -482,16 +515,25 @@ tail -f /tmp/api-server.log
 - [x] KubeRay集成
 - [x] 环境详情页
 - [x] Ray Dashboard连接
+- [x] Web终端集成
 - [x] 实时状态监控
 - [x] Namespace切换
 - [x] 资源优化配置
+- [x] 数据集管理
+- [x] 文件浏览器
+- [x] 文件预览（文本/图片/Parquet）
+- [x] 存储统计可视化
+- [x] CFS Turbo集成
 
 ### 进行中 🚧
 - [ ] 训练任务管理
 - [ ] 监控诊断功能
-- [ ] 数据管理
 
 ### 计划中 📋
+- [ ] 环境数据挂载
+- [ ] Sidecar容器集成
+- [ ] 数据版本控制
+- [ ] 审计日志
 - [ ] 用户权限管理
 - [ ] 训练任务调度
 - [ ] 模型版本管理
@@ -515,7 +557,7 @@ tail -f /tmp/api-server.log
 
 ## 👥 作者
 
-- **Virgil Liang** - *初始工作* - [GitHub](https://github.com/yourusername)
+- **Virgil Liang** - *初始工作*
 
 ## 🙏 致谢
 
@@ -523,13 +565,13 @@ tail -f /tmp/api-server.log
 - [TDesign](https://tdesign.tencent.com/) - 企业级设计体系
 - [Kubernetes](https://kubernetes.io/) - 容器编排平台
 - [Ray](https://www.ray.io/) - 分布式计算框架
+- [xterm.js](https://xtermjs.org/) - 浏览器终端模拟器
 
 ## 📞 联系方式
 
 如有问题或建议，请通过以下方式联系：
 
 - 提交 [Issue](https://github.com/yourusername/RL_on_K8S/issues)
-- 发送邮件至: your.email@example.com
 
 ---
 
