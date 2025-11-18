@@ -169,7 +169,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ namespace }) => {
       width: 120,
       cell: ({ row }: { row: Dataset }) => (
         <Tag theme={dataTypeColors[row.dataType] as any} variant="light">
-          {row.dataType.toUpperCase()}
+          {row.dataType ? row.dataType.toUpperCase() : 'UNKNOWN'}
         </Tag>
       ),
     },

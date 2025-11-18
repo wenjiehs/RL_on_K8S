@@ -20,6 +20,11 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
+const (
+	CFSMountPath    = "/mnt/cfs"
+	DefaultPVCName   = "ray-storage-pvc"
+)
+
 // Environment represents a RL training environment
 type Environment struct {
 	ID          string            `json:"id"`
@@ -1196,7 +1201,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 									"volumeMounts": []map[string]interface{}{
 										{
 											"name":      "rl-data",
-											"mountPath": CFSMountPath,
+											"mountPath": "/mnt/cfs",
 										},
 									},
 									"securityContext": map[string]interface{}{
@@ -1235,7 +1240,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 								{
 									"name": "rl-data",
 									"persistentVolumeClaim": map[string]interface{}{
-										"claimName": DefaultPVCName,
+										"claimName": "ray-storage-pvc",
 									},
 								},
 							},

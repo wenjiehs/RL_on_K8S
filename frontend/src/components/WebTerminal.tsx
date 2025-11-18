@@ -79,7 +79,21 @@ const WebTerminal: React.FC<WebTerminalProps> = ({ visible, onClose, envName, na
     };
 
     ws.onmessage = (event) => {
-      terminal.write(event.data);
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'output' && message.content) {
+          // Write the content directly to terminal - let xterm.js handle ANSI sequences
+          terminal.write(message.content);
+        } else if (message.type === 'error' && message.content) {
+          terminal.writeln(`\x1b[1;31mError: ${message.content}\x1b[0m`);
+        } else if (message.type === 'status' && message.content) {
+          terminal.writeln(`\x1b[1;36m${message.content}\x1b[0m`);
+        }
+      } catch (e) {
+        console.log('Parse error, treating as raw data:', event.data);
+        // If it's not JSON, write raw data (fallback for non-JSON messages)
+        terminal.write(event.data);
+      }
     };
 
     ws.onerror = (error) => {

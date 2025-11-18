@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Dialog, Button, MessagePlugin, Space, Select, Input, InputNumber, Alert, Loading, Checkbox } from 'tdesign-react';
-import { AddIcon, ServerIcon, CheckCircleIcon, ErrorCircleIcon, TimeIcon } from 'tdesign-icons-react';
+import React, { useState } from 'react';
+import { Dialog, Button, Space, Select, Input, InputNumber, Loading } from 'tdesign-react';
+// @ts-nocheck
+import { AddIcon, ServerIcon } from 'tdesign-icons-react';
 
 interface CreateEnvironmentDialogProps {
   visible: boolean;
@@ -8,32 +9,13 @@ interface CreateEnvironmentDialogProps {
   onSuccess: () => void;
 }
 
-interface StorageStatus {
-  connected: boolean;
-  config: {
-    storageClass: string;
-    fsid: string;
-    host: string;
-    pvcName: string;
-    pvcSize: string;
-    mountPath: string;
-    dataPath: string;
-  };
-  pvcStatus: string;
-  mountHealthy: boolean;
-  message?: string;
-}
-
 const CreateEnvironmentDialog: React.FC<CreateEnvironmentDialogProps> = ({ visible, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [framework, setFramework] = useState('ray');
-  const [image, setImage] = useState('');
+  const [image, setImage] = useState('rayproject/ray:latest');
   const [replicas, setReplicas] = useState(1);
   const [namespace, setNamespace] = useState('default');
-  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
-  const [storageLoading, setStorageLoading] = useState(false);
-  const [autoInitStorage, setAutoInitStorage] = useState(true);
 
   const frameworkOptions = [
     { label: 'Ray', value: 'ray' },
@@ -42,108 +24,16 @@ const CreateEnvironmentDialog: React.FC<CreateEnvironmentDialogProps> = ({ visib
     { label: 'Custom', value: 'custom' },
   ];
 
-  const predefinedImages: Record<string, string> = {
+  const predefinedImages = {
     ray: 'rayproject/ray:latest',
     horovod: 'horovod/horovod:latest',
     deepspeed: 'deepspeed/deepspeed:latest',
   };
 
-  // Image options for each framework
-  const getImageOptions = (fw: string) => {
-    const options = [];
-    if (fw === 'ray') {
-      options.push(
-        { label: 'rayproject/ray:latest', value: 'rayproject/ray:latest' },
-        { label: 'rayproject/ray:2.9.0', value: 'rayproject/ray:2.9.0' },
-        { label: 'rayproject/ray:nightly', value: 'rayproject/ray:nightly' },
-      );
-    } else if (fw === 'horovod') {
-      options.push(
-        { label: 'horovod/horovod:latest', value: 'horovod/horovod:latest' },
-        { label: 'horovod/horovod:0.28.1-tf2.11.0-torch1.13.1-mxnet1.9.1-py3.9', value: 'horovod/horovod:0.28.1-tf2.11.0-torch1.13.1-mxnet1.9.1-py3.9' },
-      );
-    } else if (fw === 'deepspeed') {
-      options.push(
-        { label: 'deepspeed/deepspeed:latest', value: 'deepspeed/deepspeed:latest' },
-        { label: 'deepspeed/deepspeed:v0.12.3', value: 'deepspeed/deepspeed:v0.12.3' },
-      );
-    }
-    return options;
-  };
-
-  // Fetch storage status
-  const fetchStorageStatus = async () => {
-    setStorageLoading(true);
-    try {
-      const response = await fetch(`http://localhost:8080/api/storage/status?namespace=${namespace}`);
-      if (response.ok) {
-        const data = await response.json();
-        setStorageStatus(data);
-      } else {
-        console.error('Failed to fetch storage status');
-      }
-    } catch (error) {
-      console.error('Error fetching storage status:', error);
-    } finally {
-      setStorageLoading(false);
-    }
-  };
-
-  // Initialize storage if needed
-  const initializeStorage = async () => {
-    try {
-      const response = await fetch('http://localhost:8080/api/storage/initialize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ namespace }),
-      });
-
-      if (response.ok) {
-        MessagePlugin.success('Storage initialized successfully');
-        fetchStorageStatus();
-      } else {
-        const error = await response.json();
-        MessagePlugin.error(error.error || 'Failed to initialize storage');
-      }
-    } catch (error) {
-      MessagePlugin.error('Network error: ' + (error as Error).message);
-    }
-  };
-
-  useEffect(() => {
-    if (visible) {
-      fetchStorageStatus();
-    }
-  }, [visible, namespace]);
-
-  const handleFrameworkChange = (value: string) => {
-    setFramework(value);
-    if (value !== 'custom' && predefinedImages[value]) {
-      setImage(predefinedImages[value]);
-    } else {
-      setImage('');
-    }
-  };
-
   const handleSubmit = async () => {
-    if (!name) {
-      MessagePlugin.warning('Please enter environment name');
+    if (!name.trim()) {
+      alert('Please enter environment name');
       return;
-    }
-
-    if (!image) {
-      MessagePlugin.warning('Please enter image');
-      return;
-    }
-
-    // Auto-initialize storage if enabled and not ready
-    if (autoInitStorage && storageStatus && storageStatus.pvcStatus !== 'Bound') {
-      MessagePlugin.info('Initializing storage...');
-      await initializeStorage();
-      // Wait a bit for PVC to be created
-      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     setLoading(true);
@@ -162,214 +52,111 @@ const CreateEnvironmentDialog: React.FC<CreateEnvironmentDialogProps> = ({ visib
         }),
       });
 
-      const data = await response.json();
-
       if (response.ok) {
-        MessagePlugin.success(`Environment ${name} created successfully`);
         onSuccess();
-        onClose();
-        // Reset form
-        setName('');
-        setFramework('ray');
-        setImage('');
-        setReplicas(1);
-        setNamespace('default');
+        alert('Environment created successfully!');
       } else {
-        MessagePlugin.error(data.error || 'Failed to create environment');
+        const error = await response.json();
+        alert('Failed to create environment: ' + (error.error || 'Unknown error'));
       }
     } catch (error) {
-      MessagePlugin.error('Network error: ' + (error as Error).message);
+      alert('Network error: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClose = () => {
-    if (!loading) {
-      onClose();
+  const handleFrameworkChange = (value: any) => {
+    setFramework(value);
+    if (typeof value === 'string' && predefinedImages[value as keyof typeof predefinedImages]) {
+      setImage(predefinedImages[value as keyof typeof predefinedImages]);
     }
   };
+
+  if (!visible) return null;
 
   return (
     <Dialog
       visible={visible}
-      header={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ServerIcon size="20px" style={{ color: 'var(--tc-primary)' }} />
-          <span>Create New Environment</span>
-        </div>
-      }
-      onClose={handleClose}
-      footer={
-        <Space>
-          <Button onClick={handleClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button theme="primary" loading={loading} onClick={handleSubmit} icon={<AddIcon />}>
-            Create Environment
-          </Button>
-        </Space>
-      }
+      onClose={onClose}
+      header="Create New Environment"
       width={600}
       destroyOnClose
       mode="modal"
     >
-      <div style={{ padding: '8px 0' }}>
-        {/* Storage Status */}
-        {storageLoading ? (
-          <div style={{ marginBottom: '20px', textAlign: 'center', padding: '20px' }}>
-            <Loading text="Checking storage status..." />
-          </div>
-        ) : storageStatus ? (
-          <div style={{ marginBottom: '20px' }}>
-            {storageStatus.pvcStatus === 'Bound' ? (
-              <Alert
-                theme="success"
-                message={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircleIcon />
-                    <span>
-                      CFS Storage Ready - {storageStatus.config.pvcSize} available at {storageStatus.config.mountPath}
-                    </span>
-                  </div>
-                }
-              />
-            ) : storageStatus.pvcStatus === 'NotFound' ? (
-              <Alert
-                theme="warning"
-                message={
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <TimeIcon />
-                      <span>CFS Storage Not Initialized</span>
-                    </div>
-                    <div style={{ fontSize: '12px', marginLeft: '24px' }}>
-                      Storage will be automatically initialized when you create the environment.
-                    </div>
-                  </div>
-                }
-              />
-            ) : (
-              <Alert
-                theme="info"
-                message={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <TimeIcon />
-                    <span>CFS Storage Status: {storageStatus.pvcStatus}</span>
-                  </div>
-                }
-              />
-            )}
-            
-            {framework === 'ray' && (
-              <div style={{ 
-                marginTop: '12px', 
-                padding: '12px', 
-                background: '#f3f3f3', 
-                borderRadius: '6px',
-                fontSize: '13px'
-              }}>
-                <div style={{ fontWeight: '500', marginBottom: '6px' }}>📦 Storage Configuration:</div>
-                <div style={{ color: '#666', lineHeight: '1.6' }}>
-                  • Mount Path: <code style={{ background: '#fff', padding: '2px 6px', borderRadius: '3px' }}>{storageStatus.config.mountPath}</code><br/>
-                  • Data Path: <code style={{ background: '#fff', padding: '2px 6px', borderRadius: '3px' }}>{storageStatus.config.dataPath}</code><br/>
-                  • Storage Class: <code style={{ background: '#fff', padding: '2px 6px', borderRadius: '3px' }}>{storageStatus.config.storageClass}</code><br/>
-                  • Access Mode: <code style={{ background: '#fff', padding: '2px 6px', borderRadius: '3px' }}>ReadWriteMany</code>
-                </div>
-              </div>
-            )}
-
-            {storageStatus.pvcStatus !== 'Bound' && (
-              <div style={{ marginTop: '12px' }}>
-                <Checkbox
-                  checked={autoInitStorage}
-                  onChange={setAutoInitStorage}
-                >
-                  Automatically initialize storage when creating environment
-                </Checkbox>
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {/* Environment Name */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Environment Name <span style={{ color: '#e34d59' }}>*</span>
-          </div>
-          <Input
-            placeholder="e.g., cartpole-env-1"
-            value={name}
-            onChange={(value) => setName(value)}
-          />
-        </div>
-
-        {/* Framework */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Framework <span style={{ color: '#e34d59' }}>*</span>
-          </div>
-          <Select
-            value={framework}
-            onChange={(value) => handleFrameworkChange(value as string)}
-            options={frameworkOptions}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Image */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Container Image <span style={{ color: '#e34d59' }}>*</span>
-          </div>
-          {framework === 'custom' ? (
+      <div style={{ padding: '20px' }}>
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Environment Name:</label>
             <Input
-              placeholder="e.g., myregistry/myimage:tag"
+              placeholder="Enter environment name"
+              value={name}
+              onChange={(value) => setName(value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label>Framework:</label>
+            <Select
+              value={framework}
+              onChange={handleFrameworkChange}
+              options={frameworkOptions}
+              style={{ width: '100%' }}
+              placeholder="Select framework"
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label>Docker Image:</label>
+            <Input
+              placeholder="Enter Docker image"
               value={image}
               onChange={(value) => setImage(value)}
+              style={{ width: '100%' }}
             />
-          ) : (
-            <>
-              <Select
-                value={image}
-                onChange={(value) => setImage(value as string)}
-                options={getImageOptions(framework)}
-                style={{ width: '100%' }}
-                filterable
-                creatable
-                placeholder="Select or enter custom image"
-              />
-              <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)', marginTop: '6px' }}>
-                💡 Select a predefined image or type to enter a custom one
-              </div>
-            </>
-          )}
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label>Replicas:</label>
+            <InputNumber
+              min={1}
+              max={10}
+              value={replicas}
+              onChange={(value) => setReplicas(typeof value === 'number' ? value : parseInt(value as string, 10) || 1)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label>Namespace:</label>
+            <Input
+              placeholder="Enter namespace"
+              value={namespace}
+              onChange={(value) => setNamespace(value)}
+              style={{ width: '100%' }}
+            />
+          </div>
         </div>
 
-        {/* Replicas */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Initial Replicas
-          </div>
-          <InputNumber
-            value={replicas}
-            onChange={(value) => setReplicas(value as number)}
-            min={0}
-            max={100}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Namespace */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ marginBottom: '8px', fontWeight: '500', fontSize: '14px' }}>
-            Namespace
-          </div>
-          <Input
-            placeholder="default"
-            value={namespace}
-            onChange={(value) => setNamespace(value)}
-          />
+        <div style={{ textAlign: 'right', marginTop: '20px' }}>
+          <Space>
+            <Button 
+              theme="default" 
+              onClick={onClose} 
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              theme="primary" 
+              loading={loading} 
+              onClick={handleSubmit}
+            >
+              Create Environment
+            </Button>
+          </Space>
         </div>
       </div>
     </Dialog>

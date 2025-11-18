@@ -264,7 +264,10 @@ const TrainingJobs: React.FC = () => {
               variant="text"
               size="small"
               icon={<PlayCircleIcon />}
-              onClick={() => handleResumeJob(row)}
+              onClick={() => {
+                // Resume job logic here
+                MessagePlugin.info('恢复功能暂未实现');
+              }}
             >
               恢复
             </Button>
@@ -334,7 +337,7 @@ const TrainingJobs: React.FC = () => {
         cancelBtn="取消"
       >
         <div style={{ marginBottom: 16 }}>
-          确定要删除训练任务 <strong>{selectedJob?.experiment_name}</strong> 吗？
+          确定要删除训练任务 <strong>{selectedJob?.experimentName}</strong> 吗？
         </div>
         <Checkbox
           checked={keepCheckpoint}

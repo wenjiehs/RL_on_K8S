@@ -1,0 +1,179 @@
+/* WebTerminal specific styles */
+.blinking-cursor {
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Custom scrollbar for terminal */
+.terminal-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.terminal-container::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+.terminal-container::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.terminal-container::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+/* Terminal input focus effect */
+.terminal-input:focus {
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.3);
+}
+
+/* Status indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-indicator.connecting {
+  background: rgba(250, 204, 21, 0.1);
+  color: #facc15;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+}
+
+.status-indicator.connected {
+  background: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.status-indicator.reconnecting {
+  background: rgba(250, 140, 22, 0.1);
+  color: #fa8c16;
+  border: 1px solid rgba(250, 140, 22, 0.3);
+}
+
+.status-indicator.disconnected {
+  background: rgba(245, 108, 108, 0.1);
+  color: #f56c6c;
+  border: 1px solid rgba(245, 108, 108, 0.3);
+}
+
+/* Command history highlight */
+.terminal-history-item {
+  background: rgba(56, 139, 253, 0.1);
+  border-left: 3px solid #388bfd;
+  padding-left: 8px;
+}
+
+/* Error message styling */
+.terminal-error {
+  background: rgba(245, 108, 108, 0.1);
+  color: #f56c6c;
+  border: 1px solid rgba(245, 108, 108, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 4px 0;
+}
+
+/* Success message styling */
+.terminal-success {
+  color: #34d399;
+}
+
+/* Info message styling */
+.terminal-info {
+  color: #58a6ff;
+}
+
+/* Warning message styling */
+.terminal-warning {
+  color: #facc15;
+}
+
+/* Terminal typing effect */
+.terminal-typing {
+  position: relative;
+}
+
+.terminal-typing::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  background: #58a6ff;
+  animation: blink 1s infinite;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .terminal-container {
+    font-size: 12px;
+  }
+  
+  .terminal-input {
+    font-size: 12px;
+  }
+}
+
+/* Dark theme enhancements */
+.terminal-dark {
+  background-color: #0d1117;
+  color: #c9d1d9;
+  border-color: #30363d;
+}
+
+.terminal-dark .terminal-input {
+  background-color: transparent;
+  color: #c9d1d9;
+  border-color: #30363d;
+}
+
+.terminal-dark .terminal-input:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.3);
+}
+
+/* Command output styling */
+.terminal-output {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'Cascadia Code', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+.terminal-command {
+  color: #58a6ff;
+  font-weight: 500;
+}
+
+.terminal-prompt {
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* Button hover effects */
+.terminal-button {
+  transition: all 0.2s ease;
+}
+
+.terminal-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.terminal-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

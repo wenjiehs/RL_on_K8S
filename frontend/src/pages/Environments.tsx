@@ -21,6 +21,14 @@ const Environments: React.FC = () => {
   const [environments, setEnvironments] = useState<RLEnvironment[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  
+  // Debug: 添加调试日志
+  const handleCreateClick = () => {
+    console.log('Create Environment button clicked!');
+    console.log('showCreateDialog before:', showCreateDialog);
+    setShowCreateDialog(true);
+    console.log('showCreateDialog after:', showCreateDialog);
+  };
   const [scaleDialogVisible, setScaleDialogVisible] = useState(false);
   const [scaleEnv, setScaleEnv] = useState<RLEnvironment | null>(null);
   const [scaleReplicas, setScaleReplicas] = useState(1);
@@ -138,6 +146,8 @@ const Environments: React.FC = () => {
     setTerminalEnv(env);
     setTerminalVisible(true);
   };
+
+
 
   const columns = [
     {
@@ -261,9 +271,17 @@ const Environments: React.FC = () => {
             <Button icon={<RefreshIcon />} variant="outline" onClick={fetchEnvironments} loading={loading}>
               Refresh
             </Button>
-            <Button icon={<AddIcon />} theme="primary" onClick={() => setShowCreateDialog(true)}>
+            <Button icon={<AddIcon />} theme="primary" onClick={handleCreateClick}>
               Create Environment
             </Button>
+            <CreateEnvironmentDialog 
+              visible={showCreateDialog}
+              onClose={() => setShowCreateDialog(false)}
+              onSuccess={() => {
+                setShowCreateDialog(false);
+                fetchEnvironments();
+              }}
+            />
           </Space>
         }
       >
@@ -329,6 +347,8 @@ const Environments: React.FC = () => {
           namespace={terminalEnv.namespace}
         />
       )}
+
+
     </>
   );
 };

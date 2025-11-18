@@ -85,6 +85,10 @@ func main() {
 	
 	// Terminal routes
 	mux.HandleFunc("/api/terminal/connect", handleTerminalConnect)
+	mux.HandleFunc("/api/terminal/session/create", handleCreateTerminalSession)
+	mux.HandleFunc("/api/terminal/session/", handleTerminalSession)
+	mux.HandleFunc("/api/terminal/connect/pod", handleTerminalConnectToPod)
+	mux.HandleFunc("/api/terminal/ws", handleWebSocketTerminal)
 	
 	// CFS Dataset routes (direct filesystem access)
 	mux.HandleFunc("/api/datasets", handleListCFSDatasets)

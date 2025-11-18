@@ -39,7 +39,8 @@ const StorageStats: React.FC<StorageStatsProps> = ({ namespace }) => {
       }
     } catch (error) {
       console.error('Failed to fetch statistics:', error);
-      MessagePlugin.error('Network error: ' + (error as Error).message);
+      const errorMessage = error instanceof Error ? error.message : 'Network error';
+      MessagePlugin.error('Network error: ' + errorMessage);
     } finally {
       setLoading(false);
     }
@@ -217,7 +218,7 @@ const StorageStats: React.FC<StorageStatsProps> = ({ namespace }) => {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: '500', marginBottom: '4px' }}>{dataset.name}</div>
                   <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)' }}>
-                    Experiment: {dataset.experimentId} • Type: {dataset.dataType.toUpperCase()}
+                    Experiment: {dataset.experimentId} • Type: {dataset.dataType ? dataset.dataType.toUpperCase() : 'UNKNOWN'}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
