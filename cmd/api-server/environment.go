@@ -22,7 +22,7 @@ import (
 
 const (
 	CFSMountPath    = "/mnt/cfs"
-	DefaultPVCName   = "ray-storage-pvc"
+	DefaultPVCName   = "cfs-rl-data-pvc"
 )
 
 // Environment represents a RL training environment
@@ -1210,7 +1210,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 									"command": []string{
 										"sh",
 										"-c",
-										"mkdir -p /cfs/rl-data && chown -R 1000:100 /cfs/rl-data && chmod -R 755 /cfs/rl-data || true",
+										"mkdir -p /mnt/cfs/rl-data && chown -R 1000:100 /mnt/cfs/rl-data && chmod -R 755 /mnt/cfs/rl-data || true",
 									},
 									"volumeMounts": []map[string]interface{}{
 										{
@@ -1284,7 +1284,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 										"command": []string{
 											"sh",
 											"-c",
-											"mkdir -p /cfs/rl-data && chown -R 1000:100 /cfs/rl-data && chmod -R 755 /cfs/rl-data || true",
+											"mkdir -p /mnt/cfs/rl-data && chown -R 1000:100 /mnt/cfs/rl-data && chmod -R 755 /mnt/cfs/rl-data || true",
 										},
 										"volumeMounts": []map[string]interface{}{
 											{

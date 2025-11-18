@@ -18,6 +18,7 @@ func handleStorageStatus(w http.ResponseWriter, r *http.Request) {
 		"capacity": "10TB",
 		"used": "1TB",
 		"available": "9TB",
+		"mountPoint": "/mnt/cfs",
 	})
 }
 
@@ -30,7 +31,7 @@ func handleStorageConfig(w http.ResponseWriter, r *http.Request) {
 	
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"cfs_host": "10.32.5.135",
-		"cfs_path": "/cfs/rl-data",
+		"cfs_path": "/mnt/cfs/rl-data",
 		"fsid": "83d8ea56",
 	})
 }

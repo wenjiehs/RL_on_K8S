@@ -20,57 +20,35 @@ spec:
         args:
         - |
           # 安装必要工具
-          apk add --no-cache curl jq
+          apk add --no-cache curl jq python3
 
-          # 创建挂载点目录
-          mkdir -p /mnt/cfs-turbo
+          # 创建数据目录
+          echo "🚀 Initializing unified storage access..."
+          echo "Storage Path: /mnt/cfs"
+          echo "PVC: cfs-rl-data-pvc (10Ti)"
           
-          # 尝试挂载腾讯云CFS Turbo
-          echo "Attempting to mount Tencent Cloud CFS Turbo..."
-          echo "CFS Host: 10.32.5.135"
-          echo "FSID: 83d8ea56"
+          # 创建rl-data目录
+          mkdir -p /mnt/cfs/rl-data
           
-          # 检查NFS工具
-          which mount.nfs || (apk add --no-cache nfs-utils)
+          # 显示存储状态
+          echo "📊 Storage Status:"
+          ls -la /mnt/cfs/
+          echo ""
+          echo "📁 RL Data Directory:"
+          ls -la /mnt/cfs/rl-data/ || echo "Directory is empty"
           
-          # 创建/cfs挂载点
-          mkdir -p /cfs
-          
-          # 尝试挂载CFS到/cfs
-          if mount -t nfs -o vers=4.1,timeo=70,retrans=2 10.32.5.135:/ /cfs; then
-            echo "✅ CFS mounted successfully at /cfs"
-            ls -la /cfs/
-            # 创建rl-data目录
-            mkdir -p /cfs/rl-data
-          else
-            echo "❌ Failed to mount CFS at /cfs, trying /mnt/cfs-turbo"
-            # 如果/cfs挂载失败，使用/mnt/cfs-turbo作为备选
-            mkdir -p /mnt/cfs-turbo/rl-data
-          fi
-          
-          # 启动HTTP服务器提供CFS访问API
-          if [ -d "/cfs/rl-data" ]; then
-            cd /cfs
-            echo "Starting HTTP server from /cfs directory"
-          else
-            cd /mnt/cfs-turbo
-            echo "Starting HTTP server from /mnt/cfs-turbo directory"
-          fi
-          python3 -m http.server 8080 --bind 0.0.0.0 || \
+          # 启动HTTP服务器提供统一存储访问API
+          cd /mnt/cfs
+          echo "🌐 Starting HTTP server on port 8080..."
+          echo "Access URL: http://cfs-data-accessor-service:8080"
           python3 -m http.server 8080 --bind 0.0.0.0
         volumeMounts:
-        - name: cfs-turbo-volume
-          mountPath: /mnt/cfs-turbo
+        - name: unified-storage-pvc
+          mountPath: /mnt/cfs
       volumes:
-      - name: cfs-turbo-volume
-        hostPath:
-          path: /mnt/cfs-turbo
-          type: DirectoryOrCreate
-      volumes:
-      - name: cfs-turbo-volume
-        hostPath:
-          path: /mnt/cfs-turbo
-          type: DirectoryOrCreate
+      - name: unified-storage-pvc
+        persistentVolumeClaim:
+          claimName: cfs-rl-data-pvc
       restartPolicy: Always
 ---
 apiVersion: v1

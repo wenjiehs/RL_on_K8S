@@ -150,7 +150,7 @@ func main() {
 			}); err == nil && len(pods.Items) > 0 {
 				podName := pods.Items[0].Name
 				
-				// Try to list files in CFS (check both /cfs and /mnt/cfs-turbo)
+				// List files in unified storage
 				req := currentClientset.CoreV1().RESTClient().Post().
 					Resource("pods").
 					Name(podName).
@@ -158,7 +158,7 @@ func main() {
 					SubResource("exec").
 					VersionedParams(&corev1.PodExecOptions{
 						Container: "cfs-data-accessor",
-						Command:   []string{"sh", "-c", "if [ -d \"/cfs/rl-data\" ]; then ls -la /cfs/rl-data/ | grep -v '^total' | awk '{print $9, $5}' | grep -v '^$'; else ls -la /mnt/cfs-turbo/rl-data/ | grep -v '^total' | awk '{print $9, $5}' | grep -v '^$'; fi"},
+						Command:   []string{"sh", "-c", "ls -la /mnt/cfs/rl-data/ | grep -v '^total' | awk '{print $9, $5}' | grep -v '^$' || echo 'No files found'"},
 						Stdout:    true,
 						Stderr:    false,
 					}, scheme.ParameterCodec)
@@ -177,11 +177,8 @@ func main() {
 							for _, line := range lines {
 								parts := strings.Fields(line)
 								if len(parts) >= 2 && parts[0] != "." && parts[0] != ".." {
-									// Determine correct path based on where CFS is actually mounted
-									mountPath := "/mnt/cfs-turbo/rl-data"
-									if strings.Contains(output, "/cfs/rl-data") {
-										mountPath = "/cfs/rl-data"
-									}
+									// Use unified storage path
+									mountPath := "/mnt/cfs/rl-data"
 									
 									datasets = append(datasets, map[string]interface{}{
 										"name": parts[0],
@@ -208,12 +205,12 @@ func main() {
 		if len(datasets) == 0 {
 			datasets = append(datasets, map[string]interface{}{
 				"name": "example-dataset",
-				"path": "/mnt/cfs-turbo/rl-data",
+				"path": "/mnt/cfs/rl-data",
 				"size": "1GB",
 				"created": "2024-01-01",
 				"cfsStatus": map[string]interface{}{
 					"connected": true,
-					"mountPoint": "/mnt/cfs-turbo",
+					"mountPoint": "/mnt/cfs",
 					"totalSize": "2.0T",
 					"available": "1.7T",
 				},
@@ -252,7 +249,7 @@ func main() {
 					SubResource("exec").
 					VersionedParams(&corev1.PodExecOptions{
 						Container: "cfs-data-accessor",
-						Command:   []string{"ls", "-la", "/mnt/cfs-turbo/rl-data/"},
+						Command:   []string{"sh", "-c", "if [ -d \"/mnt/cfs/rl-data\" ]; then ls -la /mnt/cfs/rl-data/ | head -5; else echo 'Directory not found'; fi"},
 						Stdout:    true,
 						Stderr:    false,
 					}, scheme.ParameterCodec)
