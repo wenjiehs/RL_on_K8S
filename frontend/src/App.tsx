@@ -6,14 +6,13 @@ import {
   ServerIcon,
   ControlPlatformIcon,
   DataIcon,
-  ChartIcon,
   LinkIcon,
   RocketIcon,
   CloudIcon,
   CloseCircleIcon,
 } from 'tdesign-icons-react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, Monitoring, DataManagement } from './pages';
+import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, DataManagement } from './pages';
 import Cluster from './pages/Cluster';
 import TestTabs from './pages/TestTabs';
 import ClusterConfigDialog from './components/ClusterConfigDialog';
@@ -81,17 +80,14 @@ const AppContent = () => {
           <Menu.MenuItem value="dashboard" icon={<DashboardIcon />}>
             Dashboard
           </Menu.MenuItem>
+          <Menu.MenuItem value="training" icon={<ControlPlatformIcon />}>
+            Training Jobs
+          </Menu.MenuItem>
           <Menu.MenuItem value="environments" icon={<ServerIcon />}>
             Environments
           </Menu.MenuItem>
           <Menu.MenuItem value="data" icon={<DataIcon />}>
             Data Management
-          </Menu.MenuItem>
-          <Menu.MenuItem value="training" icon={<ControlPlatformIcon />}>
-            Training Jobs
-          </Menu.MenuItem>
-          <Menu.MenuItem value="monitoring" icon={<ChartIcon />}>
-            Monitoring
           </Menu.MenuItem>
           <Menu.MenuItem value="cluster" icon={<CloudIcon />}>
             Cluster
@@ -126,11 +122,10 @@ const AppContent = () => {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/training" element={<TrainingJobs />} />
               <Route path="/environments" element={<Environments />} />
               <Route path="/environments/:id" element={<EnvironmentDetail />} />
               <Route path="/data" element={<DataManagement />} />
-              <Route path="/training" element={<TrainingJobs />} />
-              <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/cluster" element={<Cluster />} />
               <Route path="/test-tabs" element={<TestTabs />} />
             </Routes>

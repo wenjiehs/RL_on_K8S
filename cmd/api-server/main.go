@@ -53,6 +53,15 @@ var (
 )
 
 func main() {
+	// Initialize database
+	if err := InitDatabase(); err != nil {
+		log.Printf("Warning: Failed to initialize database: %v", err)
+		log.Println("Training job features will be disabled")
+	} else {
+		log.Println("Database initialized successfully")
+		defer CloseDatabase()
+	}
+
 	// Initialize CFS client
 	InitCFSClient()
 	
@@ -60,6 +69,7 @@ func main() {
 	
 	// API routes
 	mux.HandleFunc("/api/cluster/connect", handleClusterConnect)
+	mux.HandleFunc("/api/cluster/connect-default", handleClusterConnectDefault)
 	mux.HandleFunc("/api/cluster/status", handleClusterStatus)
 	mux.HandleFunc("/api/cluster/stats", handleGetStats)
 	mux.HandleFunc("/api/cluster/parse-kubeconfig", handleParseKubeconfig)
@@ -93,6 +103,18 @@ func main() {
 	mux.HandleFunc("/api/storage/status", handleStorageStatus)
 	mux.HandleFunc("/api/storage/config", handleStorageConfig)
 	mux.HandleFunc("/api/storage/initialize", handleInitializeStorage)
+	
+	// Training job routes
+	mux.HandleFunc("/api/training-jobs", handleListTrainingJobs)
+	mux.HandleFunc("/api/training-jobs/create", handleCreateTrainingJob)
+	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJob)
+	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJob)
+	mux.HandleFunc("/api/training-jobs/pause", handlePauseTrainingJob)
+	mux.HandleFunc("/api/training-jobs/resume", handleResumeTrainingJob)
+	mux.HandleFunc("/api/training-jobs/stop", handleStopTrainingJob)
+	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJob)
+	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetrics)
+	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpoints)
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{

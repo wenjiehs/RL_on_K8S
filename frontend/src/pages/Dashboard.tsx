@@ -17,7 +17,7 @@ const Dashboard: React.FC = () => {
     { label: 'Create Environment', icon: <ServerIcon />, action: () => navigate('/environments') },
     { label: 'Start Training Job', icon: <ControlPlatformIcon />, action: () => navigate('/training') },
     { label: 'Upload Dataset', icon: <DataIcon />, action: () => navigate('/data') },
-    { label: 'View Monitoring', icon: <ChartIcon />, action: () => navigate('/monitoring') },
+    { label: 'View Cluster', icon: <ChartIcon />, action: () => navigate('/cluster') },
   ];
 
   const recentActivities = [

@@ -1,467 +1,273 @@
-# RL on K8S - 基于 Kubernetes 的强化学习云控制台系统
+# RL Training Platform on Kubernetes
 
-一个现代化的强化学习训练管理平台，提供多集群管理、环境编排、数据管理和实时监控功能。
+基于Kubernetes的强化学习训练云控制台系统，提供完整的训练任务生命周期管理能力。
 
-## 🌟 核心特性
+## 功能特性
 
-### 集群管理
-- ✅ 多 Kubernetes 集群连接与切换
-- ✅ 支持多 Context 管理
-- ✅ 实时集群状态监控
-- ✅ Namespace 动态切换
+### 🎯 核心功能
+- **多集群管理**：支持多Kubernetes集群连接和Context切换
+- **环境管理**：Ray/Horovod/DeepSpeed等框架的环境创建和管理
+- **训练任务管理**：完整的任务生命周期控制（创建/启动/暂停/恢复/终止/删除）
+- **数据管理**：基于CFS Turbo的分布式存储，支持数据集管理和文件浏览
+- **Web终端**：浏览器内直接连接Ray Head节点进行调试
 
-### 环境管理
-- ✅ 支持多种 RL 框架（Ray、Horovod、DeepSpeed、Custom）
-- ✅ KubeRay Operator 集成（自动创建 RayCluster）
-- ✅ 环境 CRUD 操作（创建、查看、删除、扩缩容）
-- ✅ 环境详情页面（详细配置信息展示）
-- ✅ Ray Dashboard 一键访问
-- ✅ Web 终端连接 Ray Head 节点（浏览器内 Shell 交互）
-- ✅ 资源优化配置（适配资源受限集群）
-- ✅ 名称自动规范化
+### 🚀 训练任务功能
+- **双模式创建**：快速创建（预置算法）和自定义创建（上传代码）
+- **预置算法**：PPO、DQN、SAC、A3C、TD3等主流强化学习算法
+- **实时监控**：任务状态实时更新，支持启动/暂停/恢复/终止操作
+- **Checkpoint管理**：支持训练中断恢复，删除时可选保留Checkpoint
+- **分布式训练**：自动部署Ray集群，支持多节点并行训练
 
-### 数据管理
-- ✅ 直接文件系统访问（无需 Kubernetes CRD）
-- ✅ 三级分层存储架构（`/cfs/rl-data/{experiment_id}/{data_type}/{date}/`）
-- ✅ 四种数据类型分类管理（raw/train/eval/model）
-- ✅ 数据集统计可视化（存储占用、类型分布）
-- ✅ 文件浏览器（目录导航、文件列表、列表/网格视图切换）
-- ✅ 文件操作（下载、删除、预览）
-- ✅ 文本文件预览（支持 txt/log/json/yaml/md/py/sh 等）
-- ✅ 图片文件预览
-- ✅ Parquet 文件预览（Schema 展示、数据表格、分页加载）
-- ✅ 腾讯云 CFS Turbo 集成（35TB 容量）
-- ✅ 自动存储初始化（智能检测、一键创建 PVC）
+### 📊 数据管理
+- **三级分层存储**：`/cfs/rl-data/{experiment_id}/{data_type}/{date}/`
+- **四种数据类型**：raw（原始数据）、train（训练数据）、eval（评估数据）、model（模型文件）
+- **文件浏览器**：支持目录导航、文件预览（文本/图片/Parquet）
+- **存储统计**：可视化展示存储占用和数据分布
 
-### 存储集成
-- ✅ 腾讯云 CFS Turbo（CSI 驱动挂载）
-- ✅ CFS 存储配置 API（状态查询、初始化、配置管理）
-- ✅ Ray 环境自动挂载 CFS 存储（Head 和 Worker 节点）
-- ✅ 创建环境页面存储状态显示（实时检测、可视化指示器）
-- ✅ 存储配置详情展示（挂载路径、容量、访问模式）
+## 技术栈
 
-## 🏗️ 技术架构
+### 后端
+- **语言**：Go 1.21+
+- **框架**：标准库 + Gorilla WebSocket
+- **数据库**：MySQL 8.0+ with GORM ORM
+- **Kubernetes**：client-go v0.28+
+- **存储**：腾讯云CFS Turbo (CSI驱动)
 
-### 后端技术栈
-- **语言**: Go 1.21+
-- **框架**: 
-  - Kubernetes client-go（集群交互）
-  - Gorilla WebSocket（终端连接）
-  - xitongsys/parquet-go v1.6.2（Parquet 文件解析）
-- **存储**: 腾讯云 CFS Turbo（35TB，CSI 驱动）
-- **数据格式**: Apache Parquet（pyarrow/snappy 压缩）
+### 前端
+- **框架**：React 18 + TypeScript
+- **构建工具**：Vite 5
+- **UI组件**：TDesign React
+- **路由**：React Router v6
+- **终端**：xterm.js
 
-### 前端技术栈
-- **框架**: React 18 + TypeScript
-- **构建工具**: Vite 5
-- **UI 组件**: TDesign React v1.12.0
-- **终端**: xterm.js
-- **样式**: TailwindCSS 3.4.17
+### 基础设施
+- **容器编排**：Kubernetes 1.28+
+- **分布式训练**：KubeRay Operator v1.5.0
+- **存储**：CFS Turbo 35TB (fsid: 83d8ea56)
 
-### Kubernetes 集成
-- **版本**: v1.28+
-- **Operator**: KubeRay v1.5.0-rc.0
-- **存储**: CFS Turbo CSI Driver (com.tencent.cloud.csi.cfsturbo)
+## 快速开始
 
-## 📦 快速开始
+### 前置条件
+- macOS系统（或Linux）
+- Homebrew（macOS）
+- Go 1.21+
+- Node.js 18+
+- Kubernetes集群访问权限
 
-### 前置要求
+### 一键安装和启动
 
-1. **Kubernetes 集群**
-   - Kubernetes v1.28+
-   - KubeRay Operator v1.5.0-rc.0 已安装
-   - 腾讯云 CFS Turbo CSI 驱动已配置
-
-2. **开发环境**
-   - Go 1.21+
-   - Node.js 18+
-   - kubectl 配置完成
-
-### 安装步骤
-
-#### 1. 克隆项目
 ```bash
-git clone https://github.com/yourusername/RL_on_K8S.git
+# 1. 克隆仓库
+git clone <repository-url>
 cd RL_on_K8S
+
+# 2. 安装MySQL
+./scripts/install-mysql.sh
+
+# 3. 初始化数据库
+./scripts/setup-database.sh
+
+# 4. 启动所有服务
+./scripts/start-all.sh
 ```
 
-#### 2. 部署 CFS 数据访问器 Pod
-```bash
-kubectl apply -f scripts/cfs-data-accessor.yaml
-kubectl wait --for=condition=Ready pod/cfs-data-accessor -n default --timeout=60s
-```
+访问 http://localhost:5173 开始使用！
 
-#### 3. 启动后端服务
-```bash
-# 编译后端
-cd cmd/api-server
-go build -o ../../bin/api-server
+### 手动启动
 
-# 启动后端（需要设置 KUBECONFIG）
-cd ../..
-export KUBECONFIG="$HOME/.kube/config:$HOME/Downloads/cls-jrnaysd3-config"
-./bin/api-server
-```
+详细步骤请参考 [快速启动指南](docs/QUICKSTART.md)
 
-后端服务将在 `http://localhost:8080` 启动。
-
-#### 4. 启动前端服务
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-前端服务将在 `http://localhost:5173` 启动（或 5174/5175）。
-
-### 访问应用
-
-打开浏览器访问：`http://localhost:5173`
-
-## 🔧 配置说明
-
-### CFS 存储配置
-
-系统使用腾讯云 CFS Turbo 作为共享存储，配置信息：
-
-- **StorageClass**: `cfs-turbo-sc`
-- **PVC 名称**: `rl-data-storage`
-- **容量**: 100Gi（可扩展至 35TB）
-- **访问模式**: ReadWriteMany
-- **挂载路径**: `/cfs/rl-data`
-
-### 数据目录结构
-
-```
-/cfs/rl-data/
-├── {experiment_id}/          # 实验 ID
-│   ├── raw/                  # 原始数据
-│   │   └── {date}/          # 日期目录
-│   │       └── *.parquet    # 数据文件
-│   ├── train/               # 训练数据
-│   │   └── {date}/
-│   ├── eval/                # 评估数据
-│   │   └── {date}/
-│   └── model/               # 模型文件
-│       └── {date}/
-```
-
-### 环境变量
-
-后端支持以下环境变量：
-
-- `KUBECONFIG`: Kubernetes 配置文件路径（支持多个，用 `:` 分隔）
-- `CFS_USE_POD`: 是否使用 Pod 访问 CFS（默认 `true`）
-- `PORT`: API 服务端口（默认 `8080`）
-
-## 📖 使用指南
-
-### 1. 连接集群
-
-1. 访问首页，点击"集群管理"
-2. 选择要连接的 Context
-3. 点击"连接"按钮
-4. 等待连接成功提示
-
-### 2. 创建 Ray 环境
-
-1. 进入"环境管理"页面
-2. 点击"创建环境"按钮
-3. 填写环境配置：
-   - 环境名称
-   - 框架类型（选择 Ray）
-   - Head 节点配置（CPU、内存、GPU）
-   - Worker 节点配置（副本数、资源）
-   - 镜像选择
-4. 确认存储状态（绿色表示就绪）
-5. 点击"创建"
-
-### 3. 访问 Ray Dashboard
-
-1. 在环境列表中找到目标环境
-2. 点击"Dashboard"按钮
-3. 系统会自动打开 Ray Dashboard
-
-### 4. 使用 Web 终端
-
-1. 在环境列表中找到目标环境
-2. 点击"终端"按钮
-3. 在浏览器中直接操作 Ray Head 节点的 Shell
-
-### 5. 管理数据集
-
-#### 浏览数据集
-1. 进入"数据管理"页面
-2. 查看"Datasets"标签页
-3. 浏览所有可用数据集
-
-#### 上传数据
-1. 点击"创建数据集"按钮
-2. 填写实验 ID 和数据类型
-3. 选择文件上传
-4. 等待上传完成
-
-#### 文件浏览
-1. 切换到"File Browser"标签页
-2. 导航到目标目录
-3. 支持的操作：
-   - 下载文件
-   - 删除文件
-   - 预览文件（文本、图片、Parquet）
-   - 切换视图（列表/网格）
-
-#### Parquet 文件预览
-1. 在文件浏览器中找到 `.parquet` 文件
-2. 点击"预览"按钮
-3. 查看 Schema 和数据表格
-4. 支持分页浏览（默认显示前 100 行）
-
-### 6. 查看存储统计
-
-1. 进入"数据管理"页面
-2. 切换到"Storage Stats"标签页
-3. 查看：
-   - 总存储占用
-   - 各数据类型分布
-   - 文件数量统计
-
-## 🔌 API 文档
-
-### 集群管理 API
-
-#### 连接集群
-```http
-POST /api/cluster/connect
-Content-Type: application/json
-
-{
-  "context": "cls",
-  "kubeConfig": "base64_encoded_kubeconfig"
-}
-```
-
-#### 查询集群状态
-```http
-GET /api/cluster/status
-```
-
-### 环境管理 API
-
-#### 列出环境
-```http
-GET /api/environments?namespace=default
-```
-
-#### 创建环境
-```http
-POST /api/environments/create
-Content-Type: application/json
-
-{
-  "name": "my-ray-env",
-  "namespace": "default",
-  "framework": "ray",
-  "headConfig": {
-    "cpu": "2",
-    "memory": "4Gi",
-    "gpu": "0"
-  },
-  "workerConfig": {
-    "replicas": 2,
-    "cpu": "2",
-    "memory": "4Gi",
-    "gpu": "0"
-  }
-}
-```
-
-#### 删除环境
-```http
-POST /api/environments/delete
-Content-Type: application/json
-
-{
-  "name": "my-ray-env",
-  "namespace": "default"
-}
-```
-
-### 数据管理 API
-
-#### 列出数据集
-```http
-GET /api/datasets?namespace=default
-```
-
-#### 浏览目录
-```http
-GET /api/datasets/browse?path=/cfs/rl-data
-```
-
-#### 下载文件
-```http
-GET /api/datasets/download?path=/cfs/rl-data/exp001/raw/2025-11-17/data.parquet
-```
-
-#### 预览 Parquet 文件
-```http
-GET /api/datasets/preview/parquet?path=/cfs/rl-data/exp001/raw/2025-11-17/data.parquet&limit=100
-```
-
-#### 获取存储统计
-```http
-GET /api/datasets/stats
-```
-
-### 存储配置 API
-
-#### 查询存储状态
-```http
-GET /api/storage/status?namespace=default
-```
-
-#### 初始化存储
-```http
-POST /api/storage/initialize
-Content-Type: application/json
-
-{
-  "namespace": "default"
-}
-```
-
-## 🛠️ 开发指南
-
-### 项目结构
+## 项目结构
 
 ```
 RL_on_K8S/
 ├── cmd/
-│   └── api-server/          # 后端 API 服务
+│   └── api-server/          # 后端API服务器
 │       ├── main.go          # 主入口
-│       ├── cluster.go       # 集群管理
-│       ├── environment.go   # 环境管理
-│       ├── cfs_client.go    # CFS 客户端
-│       ├── cfs_dataset.go   # 数据集管理
-│       ├── dataset.go       # 文件浏览
-│       ├── parquet_preview.go # Parquet 预览
-│       ├── storage.go       # 存储配置
-│       └── terminal.go      # Web 终端
+│       ├── models.go        # 数据模型
+│       ├── database.go      # 数据库连接
+│       ├── training_job.go  # 训练任务API
+│       ├── environment.go   # 环境管理API
+│       ├── cfs.go          # CFS存储API
+│       └── terminal.go      # WebSocket终端
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # React 组件
+│   │   ├── components/      # React组件
 │   │   ├── pages/          # 页面组件
-│   │   └── App.tsx         # 应用入口
+│   │   └── App.tsx         # 主应用
 │   └── package.json
 ├── scripts/
-│   ├── cfs-data-accessor.yaml  # CFS 访问器 Pod
-│   └── fix-cfs-permissions.sh  # 权限修复脚本
-└── docs/                    # 文档目录
+│   ├── install-mysql.sh    # MySQL安装脚本
+│   ├── setup-database.sh   # 数据库初始化
+│   ├── test-database.sh    # 数据库测试
+│   ├── start-all.sh        # 启动所有服务
+│   └── stop-all.sh         # 停止所有服务
+├── docs/
+│   ├── QUICKSTART.md       # 快速启动指南
+│   └── training-jobs-setup.md  # 训练任务配置文档
+└── README.md
 ```
 
-### 添加新功能
+## 使用指南
 
-1. **后端 API**
-   - 在 `cmd/api-server/` 中添加新的处理函数
-   - 在 `main.go` 中注册路由
-   - 更新 API 文档
+### 1. 连接Kubernetes集群
 
-2. **前端页面**
-   - 在 `frontend/src/pages/` 中创建新页面
-   - 在 `App.tsx` 中添加路由
-   - 使用 TDesign 组件保持 UI 一致性
+1. 点击右上角 "Configure Cluster"
+2. 上传kubeconfig文件
+3. 选择要使用的Context
+4. 点击连接
 
-### 代码规范
+### 2. 创建训练环境
 
-- **Go**: 遵循 Go 官方代码规范
-- **TypeScript**: 使用 ESLint + Prettier
-- **提交信息**: 遵循 Conventional Commits
+1. 进入 "Environments" 页面
+2. 点击 "Create Environment"
+3. 选择框架（推荐Ray）
+4. 配置资源（CPU/内存/GPU）
+5. 创建环境并等待就绪
 
-## 🐛 故障排查
+### 3. 创建训练任务
 
-### 后端无法连接集群
+1. 进入 "Training Jobs" 页面
+2. 点击 "创建训练任务"
+3. 选择创建模式：
+   - **快速创建**：选择预置算法（PPO/DQN/SAC等）
+   - **自定义创建**：上传自定义代码
+4. 填写必填字段：
+   - 实验名称
+   - 算法类型
+   - 训练环境（选择运行中的环境）
+   - 数据路径（如：`/cfs/rl-data/exp1/train/latest`）
+5. 配置超参数（JSON格式）
+6. 点击创建
 
-**问题**: API 返回 "Not connected to any cluster"
+### 4. 启动和管理训练
 
-**解决方案**:
-1. 检查 KUBECONFIG 环境变量是否正确设置
-2. 验证 kubeconfig 文件路径是否存在
-3. 确认 kubectl 可以正常访问集群
+- **启动**：点击 "启动" 按钮开始训练
+- **暂停**：点击 "暂停" 保存状态并暂停
+- **恢复**：从暂停状态继续训练
+- **终止**：停止训练任务
+- **删除**：删除任务（可选保留Checkpoint）
 
-### 数据集 API 返回空数组
+### 5. 数据管理
 
-**问题**: `/api/datasets` 返回 `[]`
+1. 进入 "Data Management" 页面
+2. 查看数据集列表和存储统计
+3. 浏览文件目录
+4. 预览文件内容（支持文本/图片/Parquet）
+5. 下载或删除文件
 
-**解决方案**:
-1. 确认 CFS 数据访问器 Pod 正在运行：
-   ```bash
-   kubectl get pod cfs-data-accessor -n default
-   ```
-2. 检查 CFS 存储是否正确挂载：
-   ```bash
-   kubectl exec -n default cfs-data-accessor -- ls -la /cfs/rl-data
-   ```
-3. 验证后端已连接到集群
+## API文档
 
-### Web 终端无法连接
+### 训练任务API
 
-**问题**: 终端显示连接错误
+```http
+# 创建任务
+POST /api/training-jobs/create
 
-**解决方案**:
-1. 检查 Ray Head Pod 是否运行正常
-2. 验证 WebSocket 连接是否被防火墙阻止
-3. 查看浏览器控制台错误信息
+# 查询任务列表
+GET /api/training-jobs?status=running&limit=20
 
-### Parquet 文件预览失败
+# 获取任务详情
+GET /api/training-jobs/detail?experiment_id=exp_abc123
 
-**问题**: 预览 Parquet 文件时报错
+# 更新任务状态
+POST /api/training-jobs/status
+{
+  "experiment_id": "exp_abc123",
+  "action": "start"  // start, pause, terminate
+}
 
-**解决方案**:
-1. 确认文件格式正确（使用 pyarrow 生成）
-2. 检查文件大小（建议 < 100MB）
-3. 验证后端日志中的详细错误信息
+# 删除任务
+DELETE /api/training-jobs/delete?experiment_id=exp_abc123&keep_checkpoint=true
+```
 
-## 📝 更新日志
+完整API文档请参考 [训练任务配置文档](docs/training-jobs-setup.md)
 
-### v1.0.0 (2025-11-17)
+## 配置说明
 
-#### 新增功能
-- ✅ 多集群管理与连接
-- ✅ Ray 环境自动化部署
-- ✅ Web 终端集成
-- ✅ CFS Turbo 存储集成
-- ✅ 数据集管理（无 CRD）
-- ✅ Parquet 文件预览
-- ✅ 文件浏览器
-- ✅ 存储统计可视化
+### 环境变量
 
-#### 技术改进
-- ✅ 移除 Kubernetes CRD 依赖
-- ✅ 优化 BusyBox 兼容性
-- ✅ 改进错误处理
-- ✅ 增强日志记录
+```bash
+# 数据库配置
+export DB_HOST=localhost
+export DB_PORT=3306
+export DB_USER=rl_user
+export DB_PASSWORD=rl_password_2025
+export DB_NAME=rl_training
 
-## 🤝 贡献指南
+# API服务器端口
+export PORT=8080
+```
 
-欢迎贡献代码！请遵循以下步骤：
+### 数据库表结构
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+系统使用两个主要表：
 
-## 📄 许可证
+- `training_jobs`：存储训练任务元数据
+- `training_metrics`：存储训练指标数据
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+详细表结构请参考 [配置文档](docs/training-jobs-setup.md#数据库表结构)
 
-## 👥 作者
+## 故障排查
 
-- **Virgil Liang** - *Initial work*
+### MySQL连接失败
 
-## 🙏 致谢
+```bash
+# 检查MySQL服务
+brew services list | grep mysql
 
-- [KubeRay](https://github.com/ray-project/kuberay) - Ray on Kubernetes
-- [TDesign](https://tdesign.tencent.com/) - 企业级设计体系
-- [xterm.js](https://xtermjs.org/) - 终端模拟器
-- [Kubernetes](https://kubernetes.io/) - 容器编排平台
+# 重启MySQL
+brew services restart mysql@8.0
+
+# 测试连接
+./scripts/test-database.sh
+```
+
+### 后端启动失败
+
+```bash
+# 查看日志
+tail -f logs/api-server.log
+
+# 检查端口占用
+lsof -i :8080
+```
+
+### 前端无法连接后端
+
+- 检查后端是否运行在 http://localhost:8080
+- 检查浏览器控制台CORS错误
+- 验证环境变量配置
+
+更多问题请参考 [快速启动指南](docs/QUICKSTART.md#常见问题)
+
+## 开发计划
+
+- [x] 多集群管理和连接
+- [x] 环境管理（Ray/Horovod/DeepSpeed）
+- [x] 训练任务生命周期管理
+- [x] 数据管理和文件浏览
+- [x] Web终端集成
+- [x] CFS Turbo存储集成
+- [ ] 任务详情页和实时监控
+- [ ] 训练指标可视化
+- [ ] Ray Job Submission集成
+- [ ] Checkpoint版本管理UI
+- [ ] 分布式训练自动部署
+
+## 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+## 许可证
+
+MIT License
+
+## 联系方式
+
+- 项目主页：<repository-url>
+- 问题反馈：<issues-url>
+
+---
+
+**RL Training Platform** - 让强化学习训练更简单 🚀

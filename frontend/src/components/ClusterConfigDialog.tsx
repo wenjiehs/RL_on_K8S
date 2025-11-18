@@ -61,13 +61,39 @@ const ClusterConfigDialog: React.FC<ClusterConfigDialogProps> = ({ visible, onCl
     reader.readAsText(file);
   };
 
+  const handleConnectDefault = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8080/api/cluster/connect-default', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.connected) {
+        MessagePlugin.success(data.message || 'Successfully connected to cluster');
+        onSuccess([]);
+        onClose();
+      } else {
+        MessagePlugin.error(data.message || 'Failed to connect to cluster');
+      }
+    } catch (error) {
+      MessagePlugin.error('Network error: ' + (error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!fileContent) {
       MessagePlugin.warning('Please upload a kubeconfig file');
       return;
     }
 
-    if (!selectedContext) {
+    if (contexts.length > 0 && !selectedContext) {
       MessagePlugin.warning('Please select a context');
       return;
     }
@@ -136,13 +162,23 @@ const ClusterConfigDialog: React.FC<ClusterConfigDialogProps> = ({ visible, onCl
       }
       onClose={handleClose}
       footer={
-        <Space>
-          <Button onClick={handleClose} disabled={loading}>
-            Cancel
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Button 
+            variant="outline" 
+            loading={loading} 
+            onClick={handleConnectDefault}
+            style={{ marginRight: 'auto' }}
+          >
+            Use Default Config
           </Button>
-          <Button theme="primary" loading={loading} onClick={handleSubmit} icon={<LinkIcon />}>
-            Connect to Cluster
-          </Button>
+          <Space>
+            <Button onClick={handleClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button theme="primary" loading={loading} onClick={handleSubmit} icon={<LinkIcon />}>
+              Connect to Cluster
+            </Button>
+          </Space>
         </Space>
       }
       width={680}
