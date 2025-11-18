@@ -48,7 +48,7 @@ spec:
       volumes:
       - name: unified-storage-pvc
         persistentVolumeClaim:
-          claimName: cfs-rl-data-pvc
+          claimName: cfs-rl-data-pvc-new
       restartPolicy: Always
 ---
 apiVersion: v1

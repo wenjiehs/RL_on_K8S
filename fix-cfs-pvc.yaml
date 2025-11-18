@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cfs-rl-data-pvc-new
+  namespace: default
+  labels:
+    app: rl-console
+    storage-type: cfs-turbo
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: cfs-turbo-sc
+  resources:
+    requests:
+      storage: 10Ti
