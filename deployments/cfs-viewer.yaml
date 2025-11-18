@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cfs-viewer
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cfs-viewer
+  template:
+    metadata:
+      labels:
+        app: cfs-viewer
+    spec:
+      containers:
+      - name: cfs-viewer
+        image: nginx:alpine
+        command: ["/bin/sh", "-c", "--"]
+        args:
+        - |
+          # 安装必要工具
+          apk add --no-cache curl jq
+
+          # 创建挂载点目录
+          mkdir -p /mnt/cfs-turbo
+          
+          # 创建HTML文件浏览器界面
+          cat > /usr/share/nginx/html/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>CFS File Browser</title>
+              <meta charset="UTF-8">
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  .file-list { list-style: none; padding: 0; }
+                  .file-item { padding: 8px; margin: 2px 0; background: #f5f5f5; border-radius: 4px; }
+                  .file-item:hover { background: #e0e0e0; }
+                  .dir { color: #0066cc; font-weight: bold; }
+                  .file { color: #333; }
+                  .path { background: #007bff; color: white; padding: 10px; border-radius: 4px; margin: 10px 0; }
+              </style>
+          </head>
+          <body>
+              <h1>🚀 腾讯云CFS Turbo文件浏览器</h1>
+              <div class="path" id="currentPath">当前路径: /mnt/cfs-turbo/rl-data</div>
+              <div id="content">
+                  <p>正在加载文件列表...</p>
+              </div>
+              
+              <script>
+                  function loadFiles(path) {
+                      fetch('/api/files?path=' + encodeURIComponent(path))
+                          .then(response => response.json())
+                          .then(data => {
+                              document.getElementById('currentPath').textContent = '当前路径: ' + data.path;
+                              let html = '<ul class="file-list">';
+                              if (data.files && data.files.length > 0) {
+                                  data.files.forEach(file => {
+                                      let className = file.isDir ? 'dir' : 'file';
+                                      let icon = file.isDir ? '📁' : '📄';
+                                      html += '<li class="file-item ' + className + '">';
+                                      html += icon + ' <a href="#" onclick="loadFile(\\'' + file.path + '\\')">' + file.name + '</a>';
+                                      if (!file.isDir) {
+                                          html += ' <a href="/api/download?path=' + encodeURIComponent(file.path) + '" download>⬇️</a>';
+                                      }
+                                      html += '</li>';
+                                  });
+                              } else {
+                                  html = '<p>此目录为空</p>';
+                              }
+                              html += '</ul>';
+                              document.getElementById('content').innerHTML = html;
+                          })
+                          .catch(error => {
+                              document.getElementById('content').innerHTML = '<p>加载失败: ' + error.message + '</p>';
+                          });
+                  }
+                  
+                  function loadFile(path) {
+                      // 实现文件内容加载逻辑
+                      console.log('Loading file:', path);
+                  }
+                  
+                  // 加载根目录
+                  loadFiles('/mnt/cfs-turbo/rl-data');
+                  
+                  // 定期刷新
+                  setInterval(() => loadFiles('/mnt/cfs-turbo/rl-data'), 30000);
+              </script>
+          </body>
+          </html>
+          EOF
+
+          # 创建文件API
+          cat > /usr/share/nginx/html/api.py << 'EOF'
+          #!/usr/bin/env python3
+          import os
+          import json
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from urllib.parse import urlparse, parse_qs
+
+          class CFSAPIHandler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  parsed = urlparse(self.path)
+                  query = parse_qs(parsed.query)
+                  
+                  if self.path.startswith('/api/files'):
+                      path = query.get('path', ['/mnt/cfs-turbo/rl-data'])[0]
+                      return self.list_files(path)
+                  elif self.path.startswith('/api/download'):
+                      path = query.get('path', [''])[0]
+                      return self.download_file(path)
+                  else:
+                      self.send_response(404, {'Content-Type': 'text/plain'}, 'Not Found')
+              
+              def list_files(self, path):
+                  try:
+                      if not os.path.exists(path):
+                          return self.send_response(404, {'Content-Type': 'application/json'}, json.dumps({'error': 'Path not found'}))
+                      
+                      files = []
+                      for item in os.listdir(path):
+                          item_path = os.path.join(path, item)
+                          is_dir = os.path.isdir(item_path)
+                          stat = os.stat(item_path)
+                          
+                          files.append({
+                              'name': item,
+                              'path': item_path,
+                              'isDir': is_dir,
+                              'size': stat.st_size if not is_dir else 0
+                          })
+                      
+                      response = {
+                          'path': path,
+                          'files': files,
+                          'cfsHost': '10.32.5.135',
+                          'fsid': '83d8ea56'
+                      }
+                      return self.send_response(200, {'Content-Type': 'application/json'}, json.dumps(response))
+                  
+              def download_file(self, path):
+                  try:
+                      if not os.path.exists(path) or os.path.isdir(path):
+                          return self.send_response(404, {'Content-Type': 'text/plain'}, 'File not found')
+                      
+                      with open(path, 'rb') as f:
+                          content = f.read()
+                          filename = os.path.basename(path)
+                          self.send_response(200, {
+                              'Content-Type': 'application/octet-stream',
+                              'Content-Disposition': f'attachment; filename="{filename}"'
+                          }, content)
+                  except Exception as e:
+                      return self.send_response(500, {'Content-Type': 'text/plain'}, str(e))
+              
+              def send_response(self, status, headers, content):
+                  self.send_response_only(status)
+                  for header, value in headers.items():
+                      self.send_header(header, value)
+                  self.end_headers()
+                  self.wfile.write(content.encode() if isinstance(content, str) else content)
+
+          if __name__ == '__main__':
+              # 启动Python API服务器
+              api_server = HTTPServer(('0.0.0.0', 8081), CFSAPIHandler)
+              print("CFS API Server starting on port 8081...")
+              api_server.serve_forever()
+          EOF
+
+          # 检查CFS挂载并启动服务
+          echo "Checking CFS mount status..."
+          if mount | grep -q "10.32.5.135"; then
+            echo "✅ CFS is mounted"
+          else
+            echo "⚠️ CFS not mounted, creating demo directories"
+            mkdir -p /mnt/cfs-turbo/rl-data/{experiment-{001,002,003}/{raw,train,eval,model}/{2024-01-18}
+            echo "Creating demo files..."
+            echo "Demo raw data" > /mnt/cfs-turbo/rl-data/experiment-001/raw/2024-01-18/demo.txt
+            echo "Demo training data" > /mnt/cfs-turbo/rl-data/experiment-001/train/2024-01-18/dataset.csv
+            echo "Demo model checkpoint" > /mnt/cfs-turbo/rl-data/experiment-001/model/2024-01-18/checkpoint.pt
+          fi
+          
+          echo "Starting CFS services..."
+          # 启动nginx（主服务）
+          nginx -g 'daemon off;'
+        volumeMounts:
+        - name: cfs-turbo-volume
+          mountPath: /mnt/cfs-turbo
+      volumes:
+      - name: cfs-turbo-volume
+        hostPath:
+          path: /mnt/cfs-turbo
+          type: DirectoryOrCreate
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cfs-viewer-service
+  namespace: default
+spec:
+  selector:
+    app: cfs-viewer
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer

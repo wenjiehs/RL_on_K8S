@@ -90,8 +90,7 @@ const WebTerminal: React.FC<WebTerminalProps> = ({ visible, onClose, envName, na
           terminal.writeln(`\x1b[1;36m${message.content}\x1b[0m`);
         }
       } catch (e) {
-        console.log('Parse error, treating as raw data:', event.data);
-        // If it's not JSON, write raw data (fallback for non-JSON messages)
+        // If it's not JSON, treat as raw terminal output (for raw terminal data)
         terminal.write(event.data);
       }
     };

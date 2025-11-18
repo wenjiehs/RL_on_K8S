@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cfs-data-accessor
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cfs-data-accessor
+  template:
+    metadata:
+      labels:
+        app: cfs-data-accessor
+    spec:
+      containers:
+      - name: cfs-data-accessor
+        image: alpine:latest
+        command: ["/bin/sh", "-c", "--"]
+        args:
+        - |
+          # 安装必要工具
+          apk add --no-cache curl jq
+
+          # 创建挂载点目录
+          mkdir -p /mnt/cfs-turbo
+          
+          # 尝试挂载腾讯云CFS Turbo
+          echo "Attempting to mount Tencent Cloud CFS Turbo..."
+          echo "CFS Host: 10.32.5.135"
+          echo "FSID: 83d8ea56"
+          
+          # 检查NFS工具
+          which mount.nfs || (apk add --no-cache nfs-utils)
+          
+          # 创建/cfs挂载点
+          mkdir -p /cfs
+          
+          # 尝试挂载CFS到/cfs
+          if mount -t nfs -o vers=4.1,timeo=70,retrans=2 10.32.5.135:/ /cfs; then
+            echo "✅ CFS mounted successfully at /cfs"
+            ls -la /cfs/
+            # 创建rl-data目录
+            mkdir -p /cfs/rl-data
+          else
+            echo "❌ Failed to mount CFS at /cfs, trying /mnt/cfs-turbo"
+            # 如果/cfs挂载失败，使用/mnt/cfs-turbo作为备选
+            mkdir -p /mnt/cfs-turbo/rl-data
+          fi
+          
+          # 启动HTTP服务器提供CFS访问API
+          if [ -d "/cfs/rl-data" ]; then
+            cd /cfs
+            echo "Starting HTTP server from /cfs directory"
+          else
+            cd /mnt/cfs-turbo
+            echo "Starting HTTP server from /mnt/cfs-turbo directory"
+          fi
+          python3 -m http.server 8080 --bind 0.0.0.0 || \
+          python3 -m http.server 8080 --bind 0.0.0.0
+        volumeMounts:
+        - name: cfs-turbo-volume
+          mountPath: /mnt/cfs-turbo
+      volumes:
+      - name: cfs-turbo-volume
+        hostPath:
+          path: /mnt/cfs-turbo
+          type: DirectoryOrCreate
+      volumes:
+      - name: cfs-turbo-volume
+        hostPath:
+          path: /mnt/cfs-turbo
+          type: DirectoryOrCreate
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cfs-data-accessor-service
+  namespace: default
+spec:
+  selector:
+    app: cfs-data-accessor
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

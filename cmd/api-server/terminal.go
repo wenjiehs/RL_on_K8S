@@ -118,20 +118,9 @@ func (t *TerminalSession) Write(p []byte) (int, error) {
 	
 	output := string(p)
 	
-	// Create proper JSON message with escaped content
-	message := map[string]string{
-		"type": "output",
-		"content": output,
-	}
-	
-	jsonData, err := json.Marshal(message)
-	if err != nil {
-		// Fallback to simple format if JSON marshaling fails
-		jsonData = []byte(fmt.Sprintf(`{"type":"output","content":"%s"}`, strings.ReplaceAll(output, `"`, `\"`)))
-	}
-	
-	// Send output to WebSocket
-	err = t.wsConn.WriteMessage(websocket.TextMessage, jsonData)
+	// Send raw output directly without JSON wrapping for better terminal compatibility
+	// This allows xterm.js to properly handle ANSI escape sequences
+	err := t.wsConn.WriteMessage(websocket.TextMessage, []byte(output))
 	if err != nil {
 		return 0, err
 	}
