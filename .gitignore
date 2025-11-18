@@ -3,7 +3,7 @@
 *.dll
 *.so
 *.dylib
-api-server
+# api-server (commented out to allow Go source files)
 /tmp/
 /cmd/api-server/api-server
 

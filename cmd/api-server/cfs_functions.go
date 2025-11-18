@@ -128,7 +128,7 @@ func handleClusterConnectDefault(w http.ResponseWriter, r *http.Request) {
 
 
 // handleListCFSDatasets 处理CFS数据集列表
-func handleListCFSDatasets(w http.ResponseWriter, r *http.Request) {
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
