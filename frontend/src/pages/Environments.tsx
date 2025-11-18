@@ -298,12 +298,6 @@ const Environments: React.FC = () => {
         />
       </Card>
 
-      <CreateEnvironmentDialog
-        visible={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
-        onSuccess={fetchEnvironments}
-      />
-
       <Dialog
         visible={scaleDialogVisible}
         header="Scale Environment"

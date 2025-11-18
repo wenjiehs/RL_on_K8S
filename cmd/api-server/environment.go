@@ -304,8 +304,17 @@ func handleCreateEnvironment(w http.ResponseWriter, r *http.Request) {
 	
 	// For Ray framework, use KubeRay RayCluster
 	if req.Framework == "ray" {
+		// Add REST config check
+		if currentRestConfig == nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "Kubernetes REST config is not available. Please ensure cluster connection is established.",
+			})
+			return
+		}
+		
 		err := createRayCluster(ctx, req.Name, req.Namespace, image, req.Replicas, labels)
 		if err != nil {
+			log.Printf("Failed to create Ray cluster: %v", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{
 				"error": "Failed to create Ray cluster: " + err.Error(),
 			})
@@ -1152,6 +1161,11 @@ func convertDeploymentToDetail(dep *appsv1.Deployment) *EnvironmentDetail {
 
 // createRayCluster creates a KubeRay RayCluster resource using dynamic client
 func createRayCluster(ctx context.Context, name, namespace, image string, workers int32, labels map[string]string) error {
+	// Add nil check for REST config
+	if currentRestConfig == nil {
+		return fmt.Errorf("REST config is not available")
+	}
+
 	// Create dynamic client
 	dynamicClient, err := dynamic.NewForConfig(currentRestConfig)
 	if err != nil {
@@ -1201,7 +1215,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 									"volumeMounts": []map[string]interface{}{
 										{
 											"name":      "rl-data",
-											"mountPath": "/mnt/cfs",
+											"mountPath": CFSMountPath,
 										},
 									},
 									"securityContext": map[string]interface{}{
@@ -1240,7 +1254,7 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 								{
 									"name": "rl-data",
 									"persistentVolumeClaim": map[string]interface{}{
-										"claimName": "ray-storage-pvc",
+										"claimName": DefaultPVCName,
 									},
 								},
 							},
