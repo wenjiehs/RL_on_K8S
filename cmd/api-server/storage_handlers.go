@@ -31,7 +31,7 @@ func handleStorageConfig(w http.ResponseWriter, r *http.Request) {
 	
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"cfs_host": "10.32.5.135",
-		"cfs_path": "/mnt/cfs/rl-data",
+		"cfs_path": "/mnt/cfs-turbo/cfs",
 		"fsid": "83d8ea56",
 	})
 }

@@ -3,15 +3,14 @@ import { Card, Select, Tabs } from 'tdesign-react';
 import { DataIcon, ChartIcon } from 'tdesign-icons-react';
 import DatasetList from '../components/DatasetList';
 import StorageStats from '../components/StorageStats';
+import { useNamespaces } from '../hooks/useNamespaces';
 
 const DataManagement: React.FC = () => {
   const [selectedNamespace, setSelectedNamespace] = useState('default');
   const [activeTab, setActiveTab] = useState('datasets');
-
-  const namespaceOptions = [
-    { label: 'default', value: 'default' },
-    { label: 'ray-test', value: 'ray-test' },
-  ];
+  
+  // 使用自定义Hook获取动态命名空间
+  const { namespaces: namespaceOptions, loading: namespacesLoading } = useNamespaces();
 
   return (
     <div>
@@ -23,6 +22,8 @@ const DataManagement: React.FC = () => {
           options={namespaceOptions}
           style={{ width: '200px' }}
           placeholder="Select Namespace"
+          loading={namespacesLoading}
+          filterable
         />
       </div>
       

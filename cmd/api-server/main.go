@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/cors"
@@ -53,7 +54,39 @@ var (
 	currentRestConfig *rest.Config
 	currentContext   string
 	currentCluster   string
+	isReconnecting  bool
+	reconnectMutex  sync.Mutex
 )
+
+// handleListNamespaces handles the request to list all namespaces
+func handleListNamespaces(w http.ResponseWriter, r *http.Request) {
+	if currentClientset == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "Not connected to Kubernetes cluster",
+		})
+		return
+	}
+
+	namespaces, err := currentClientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": "Failed to list namespaces: " + err.Error(),
+		})
+		return
+	}
+
+	var namespaceList []map[string]interface{}
+	for _, ns := range namespaces.Items {
+		namespaceList = append(namespaceList, map[string]interface{}{
+			"name":   ns.Name,
+			"status": ns.Status.Phase,
+			"labels": ns.Labels,
+			"created": ns.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	respondJSON(w, http.StatusOK, namespaceList)
+}
 
 func main() {
 	// Initialize database
@@ -63,6 +96,21 @@ func main() {
 	} else {
 		log.Println("Database initialized successfully")
 		defer CloseDatabase()
+	}
+
+	// Initialize training job database
+	if err := InitTrainingJobDB(); err != nil {
+		log.Printf("Warning: Failed to initialize training job database: %v", err)
+		log.Println("Training job features will be disabled")
+	} else {
+		log.Println("Training job database initialized successfully")
+	}
+
+	// Auto migrate database
+	if err := AutoMigrate(); err != nil {
+		log.Printf("Warning: Failed to auto migrate database: %v", err)
+	} else {
+		log.Println("Database auto migration completed successfully")
 	}
 
 	// Initialize CFS client (removed - using direct filesystem access)
@@ -89,19 +137,38 @@ func main() {
 			os.Setenv("KUBECONFIG", kubeconfigPath)
 			config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 			if err == nil {
+				// Configure timeout and TLS
+				config.Timeout = 15 * time.Second
+				
+				// If no CA data, skip TLS verification
+				if len(config.TLSClientConfig.CAData) == 0 && config.TLSClientConfig.CAFile == "" {
+					log.Printf("No CA certificate found, skipping TLS verification")
+					config.TLSClientConfig.Insecure = true
+				}
+				
 				clientset, err := kubernetes.NewForConfig(config)
 				if err == nil {
-					currentClientset = clientset
-					currentRestConfig = config
-					currentContext = "cls"
+					// Test the connection
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
 					
-					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(map[string]interface{}{
-						"success": true,
-						"message": "Connected to cluster using default config",
-						"context": currentContext,
-					})
-					return
+					if _, testErr := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{Limit: 1}); testErr == nil {
+						currentClientset = clientset
+						currentRestConfig = config
+						currentContext = "cls"
+						
+						log.Printf("Successfully connected to Kubernetes cluster on startup")
+						
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(map[string]interface{}{
+							"success": true,
+							"message": "Connected to cluster using default config",
+							"context": currentContext,
+						})
+						return
+					} else {
+						log.Printf("Initial connection test failed: %v", testErr)
+					}
 				}
 			}
 		}
@@ -116,6 +183,7 @@ func main() {
 	mux.HandleFunc("/api/cluster/status", handleClusterStatus)
 	mux.HandleFunc("/api/cluster/stats", handleGetStats)
 	mux.HandleFunc("/api/cluster/parse-kubeconfig", handleParseKubeconfig)
+	mux.HandleFunc("/api/namespaces", handleListNamespaces)
 	
 	// Environment routes
 	mux.HandleFunc("/api/environments", handleListEnvironments)
@@ -145,7 +213,7 @@ func main() {
 		
 		// Try to get real data from CFS data accessor
 		if currentClientset != nil {
-			if pods, err := currentClientset.CoreV1().Pods("default").List(context.Background(), metav1.ListOptions{
+			if pods, err := currentClientset.CoreV1().Pods("rl").List(context.Background(), metav1.ListOptions{
 				LabelSelector: "app=cfs-data-accessor",
 			}); err == nil && len(pods.Items) > 0 {
 				podName := pods.Items[0].Name
@@ -154,11 +222,11 @@ func main() {
 				req := currentClientset.CoreV1().RESTClient().Post().
 					Resource("pods").
 					Name(podName).
-					Namespace("default").
+					Namespace("rl").
 					SubResource("exec").
 					VersionedParams(&corev1.PodExecOptions{
 						Container: "cfs-data-accessor",
-						Command:   []string{"sh", "-c", "ls -la /mnt/cfs/rl-data/ | grep -v '^total' | awk '{print $9, $5}' | grep -v '^$' || echo 'No files found'"},
+						Command:   []string{"sh", "-c", "ls -la /mnt/cfs-turbo/cfs/ | grep -v '^total' | awk '{print $9, $5}' | grep -v '^$' || echo 'No files found'"},
 						Stdout:    true,
 						Stderr:    false,
 					}, scheme.ParameterCodec)
@@ -178,7 +246,7 @@ func main() {
 								parts := strings.Fields(line)
 								if len(parts) >= 2 && parts[0] != "." && parts[0] != ".." {
 									// Use unified storage path
-									mountPath := "/mnt/cfs/rl-data"
+									mountPath := "/mnt/cfs-turbo/cfs"
 									
 									datasets = append(datasets, map[string]interface{}{
 										"name": parts[0],
@@ -205,7 +273,7 @@ func main() {
 		if len(datasets) == 0 {
 			datasets = append(datasets, map[string]interface{}{
 				"name": "example-dataset",
-				"path": "/mnt/cfs/rl-data",
+				"path": "/mnt/cfs-turbo/cfs",
 				"size": "1GB",
 				"created": "2024-01-01",
 				"cfsStatus": map[string]interface{}{
@@ -245,11 +313,11 @@ func main() {
 				req := currentClientset.CoreV1().RESTClient().Post().
 					Resource("pods").
 					Name(podName).
-					Namespace("default").
+					Namespace("rl").
 					SubResource("exec").
 					VersionedParams(&corev1.PodExecOptions{
 						Container: "cfs-data-accessor",
-						Command:   []string{"sh", "-c", "if [ -d \"/mnt/cfs/rl-data\" ]; then ls -la /mnt/cfs/rl-data/ | head -5; else echo 'Directory not found'; fi"},
+						Command:   []string{"sh", "-c", "if [ -d \"/mnt/cfs-turbo/cfs\" ]; then ls -la /mnt/cfs-turbo/cfs/ | head -5; else echo 'Directory not found'; fi"},
 						Stdout:    true,
 						Stderr:    false,
 					}, scheme.ParameterCodec)
@@ -289,16 +357,16 @@ func main() {
 	mux.HandleFunc("/api/storage/initialize", handleInitializeStorage)
 	
 	// Training job routes
-	mux.HandleFunc("/api/training-jobs", handleListTrainingJobs)
-	mux.HandleFunc("/api/training-jobs/create", handleCreateTrainingJob)
-	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJob)
-	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJob)
-	mux.HandleFunc("/api/training-jobs/pause", handlePauseTrainingJob)
-	mux.HandleFunc("/api/training-jobs/resume", handleResumeTrainingJob)
-	mux.HandleFunc("/api/training-jobs/stop", handleStopTrainingJob)
-	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJob)
-	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetrics)
-	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpoints)
+	mux.HandleFunc("/api/training-jobs", handleListTrainingJobsHandler)
+	mux.HandleFunc("/api/training-jobs/create", handleCreateTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/pause", handlePauseTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/resume", handleResumeTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/stop", handleStopTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetricsHandler)
+	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpointsHandler)
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{
@@ -475,23 +543,37 @@ func handleClusterConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleClusterStatus(w http.ResponseWriter, r *http.Request) {
+	// If not connected, try to reconnect first
 	if currentClientset == nil {
-		respondJSON(w, http.StatusOK, ClusterStatus{
-			Connected: false,
-			Message:   "Not connected to any cluster",
-		})
-		return
+		log.Printf("No active connection, attempting to reconnect...")
+		if err := attemptReconnect(); err != nil {
+			respondJSON(w, http.StatusOK, ClusterStatus{
+				Connected: false,
+				Message:   "Not connected to any cluster: " + err.Error(),
+			})
+			return
+		}
 	}
 	
 	// Test connection by listing pods
 	_, err := currentClientset.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{Limit: 1})
 	if err != nil {
-		currentClientset = nil
-		respondJSON(w, http.StatusOK, ClusterStatus{
-			Connected: false,
-			Message:   "Connection lost: " + err.Error(),
-		})
-		return
+		log.Printf("Connection test failed: %v, attempting reconnection...", err)
+		if reconnectErr := attemptReconnect(); reconnectErr != nil {
+			respondJSON(w, http.StatusOK, ClusterStatus{
+				Connected: false,
+				Message:   "Connection lost and reconnection failed: " + reconnectErr.Error(),
+			})
+			return
+		}
+		// Test the new connection
+		if _, testErr := currentClientset.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{Limit: 1}); testErr != nil {
+			respondJSON(w, http.StatusOK, ClusterStatus{
+				Connected: false,
+				Message:   "Reconnected but connection test failed: " + testErr.Error(),
+			})
+			return
+		}
 	}
 	
 	respondJSON(w, http.StatusOK, ClusterStatus{
@@ -571,4 +653,75 @@ func getDynamicClient() dynamic.Interface {
 		return nil
 	}
 	return client
+}
+
+// attemptReconnect tries to reconnect to the Kubernetes cluster using existing kubeconfig
+func attemptReconnect() error {
+	reconnectMutex.Lock()
+	defer reconnectMutex.Unlock()
+	
+	// Prevent multiple reconnection attempts
+	if isReconnecting {
+		return fmt.Errorf("reconnection already in progress")
+	}
+	
+	isReconnecting = true
+	defer func() {
+		isReconnecting = false
+	}()
+	
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	if kubeconfigPath == "" {
+		kubeconfigPath = filepath.Join(os.Getenv("HOME"), "Downloads", "cls-jrnaysd3-config")
+	}
+	
+	// Clean up kubeconfig path (remove leading colon if present)
+	if strings.HasPrefix(kubeconfigPath, ":") {
+		kubeconfigPath = kubeconfigPath[1:]
+	}
+	
+	// Check if kubeconfig file exists
+	if _, err := os.Stat(kubeconfigPath); err != nil {
+		return fmt.Errorf("kubeconfig file not found at %s", kubeconfigPath)
+	}
+	
+	log.Printf("Attempting to reconnect using kubeconfig: %s", kubeconfigPath)
+	
+	// Try to build config from kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to build config from kubeconfig: %w", err)
+	}
+	
+	// Configure timeout and TLS
+	config.Timeout = 15 * time.Second
+	
+	// If no CA data, skip TLS verification
+	if len(config.TLSClientConfig.CAData) == 0 && config.TLSClientConfig.CAFile == "" {
+		log.Printf("No CA certificate found, skipping TLS verification")
+		config.TLSClientConfig.Insecure = true
+	}
+	
+	// Create clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create K8s client: %w", err)
+	}
+	
+	// Test the connection with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	_, err = clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return fmt.Errorf("connection test failed: %w", err)
+	}
+	
+	// If we get here, connection is successful
+	currentClientset = clientset
+	currentRestConfig = config
+	currentContext = "cls"
+	
+	log.Printf("Successfully reconnected to Kubernetes cluster")
+	return nil
 }

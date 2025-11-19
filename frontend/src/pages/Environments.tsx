@@ -4,6 +4,7 @@ import { Table, Button, Tag, Space, Card, MessagePlugin, Dialog, DialogPlugin, I
 import { AddIcon, RefreshIcon, TerminalIcon } from 'tdesign-icons-react';
 import CreateEnvironmentDialog from '../components/CreateEnvironmentDialog';
 import WebTerminal from '../components/WebTerminal';
+import { useNamespaces } from '../hooks/useNamespaces';
 
 interface RLEnvironment {
   id: string;
@@ -35,11 +36,9 @@ const Environments: React.FC = () => {
   const [selectedNamespace, setSelectedNamespace] = useState('default');
   const [terminalVisible, setTerminalVisible] = useState(false);
   const [terminalEnv, setTerminalEnv] = useState<RLEnvironment | null>(null);
-
-  const namespaceOptions = [
-    { label: 'default', value: 'default' },
-    { label: 'ray-test', value: 'ray-test' },
-  ];
+  
+  // 使用自定义Hook获取动态命名空间
+  const { namespaces: namespaceOptions, loading: namespacesLoading, error: namespacesError, refetch: refetchNamespaces } = useNamespaces();
 
   const fetchEnvironments = useCallback(async () => {
     setLoading(true);
@@ -267,6 +266,8 @@ const Environments: React.FC = () => {
               options={namespaceOptions}
               style={{ width: '150px' }}
               placeholder="Select Namespace"
+              loading={namespacesLoading}
+              filterable
             />
             <Button icon={<RefreshIcon />} variant="outline" onClick={fetchEnvironments} loading={loading}>
               Refresh

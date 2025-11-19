@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cfs-data-accessor
-  namespace: default
+  namespace: rl
 spec:
   replicas: 1
   selector:
@@ -24,38 +24,35 @@ spec:
 
           # 创建数据目录
           echo "🚀 Initializing unified storage access..."
-          echo "Storage Path: /mnt/cfs"
-          echo "PVC: cfs-rl-data-pvc (10Ti)"
-          
-          # 创建rl-data目录
-          mkdir -p /mnt/cfs/rl-data
+          echo "Storage Path: /mnt/cfs-turbo"
+          echo "PVC: rl-cfs-turbo-pv (10Gi)"
           
           # 显示存储状态
           echo "📊 Storage Status:"
-          ls -la /mnt/cfs/
+          ls -la /mnt/cfs-turbo/
           echo ""
-          echo "📁 RL Data Directory:"
-          ls -la /mnt/cfs/rl-data/ || echo "Directory is empty"
+          echo "📁 CFS Data Directory:"
+          ls -la /mnt/cfs-turbo/cfs/ || echo "Directory is empty"
           
           # 启动HTTP服务器提供统一存储访问API
-          cd /mnt/cfs
+          cd /mnt/cfs-turbo
           echo "🌐 Starting HTTP server on port 8080..."
           echo "Access URL: http://cfs-data-accessor-service:8080"
           python3 -m http.server 8080 --bind 0.0.0.0
         volumeMounts:
         - name: unified-storage-pvc
-          mountPath: /mnt/cfs
+          mountPath: /mnt/cfs-turbo
       volumes:
       - name: unified-storage-pvc
         persistentVolumeClaim:
-          claimName: cfs-rl-data-pvc-new
+          claimName: rl-cfs-turbo-pv
       restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: cfs-data-accessor-service
-  namespace: default
+  namespace: rl
 spec:
   selector:
     app: cfs-data-accessor

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Table, Button, Tag, Space, Card, MessagePlugin, Dialog, Checkbox } from 'tdesign-react';
 import { AddIcon, RefreshIcon, PlayCircleIcon, PauseCircleIcon, StopCircleIcon, DeleteIcon } from 'tdesign-icons-react';
 import CreateTrainingJobDialog from '../components/CreateTrainingJobDialog';
@@ -27,6 +28,7 @@ interface TrainingJob {
 }
 
 const TrainingJobs: React.FC = () => {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -168,10 +170,40 @@ const TrainingJobs: React.FC = () => {
       width: 180,
       cell: ({ row }: { row: TrainingJob }) => (
         <div>
-          <div style={{ fontWeight: '500', color: 'var(--tc-text-primary)' }}>
+          <div 
+            style={{ 
+              fontWeight: '500', 
+              color: 'var(--td-brand-color)',
+              cursor: 'pointer',
+              textDecoration: 'none'
+            }}
+            onClick={() => navigate(`/training/${row.id}`)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.textDecoration = 'underline';
+              e.currentTarget.style.opacity = '0.8';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.textDecoration = 'none';
+              e.currentTarget.style.opacity = '1';
+            }}
+          >
             {row.experimentName}
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--tc-text-placeholder)' }}>
+          <div 
+            style={{ 
+              fontSize: '12px', 
+              color: 'var(--tc-text-secondary)',
+              cursor: 'pointer',
+              fontFamily: 'monospace'
+            }}
+            onClick={() => navigate(`/training/${row.id}`)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--td-brand-color)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--tc-text-secondary)';
+            }}
+          >
             {row.id}
           </div>
         </div>
@@ -225,6 +257,14 @@ const TrainingJobs: React.FC = () => {
       fixed: 'right' as const,
       cell: ({ row }: { row: TrainingJob }) => (
         <Space size="small">
+          <Button
+            theme="primary"
+            variant="text"
+            size="small"
+            onClick={() => navigate(`/training/${row.id}`)}
+          >
+            详情
+          </Button>
           {row.status === 'pending' && (
             <Button
               theme="primary"

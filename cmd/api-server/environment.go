@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	CFSMountPath    = "/mnt/cfs"
-	DefaultPVCName   = "cfs-rl-data-pvc-new"
+	CFSMountPath    = "/mnt/cfs-turbo"
+	DefaultPVCName   = "rl-cfs-turbo-pv"
 )
 
 // Environment represents a RL training environment

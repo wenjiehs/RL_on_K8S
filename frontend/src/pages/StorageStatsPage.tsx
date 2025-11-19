@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Card, Select } from 'tdesign-react';
 import StorageStats from '../components/StorageStats';
+import { useNamespaces } from '../hooks/useNamespaces';
 
 const StorageStatsPage: React.FC = () => {
   const [selectedNamespace, setSelectedNamespace] = useState('default');
-
-  const namespaceOptions = [
-    { label: 'default', value: 'default' },
-    { label: 'ray-test', value: 'ray-test' },
-  ];
+  
+  // 使用自定义Hook获取动态命名空间
+  const { namespaces: namespaceOptions, loading: namespacesLoading } = useNamespaces();
 
   return (
     <div>
@@ -20,6 +19,8 @@ const StorageStatsPage: React.FC = () => {
           options={namespaceOptions}
           style={{ width: '200px' }}
           placeholder="Select Namespace"
+          loading={namespacesLoading}
+          filterable
         />
       </div>
       

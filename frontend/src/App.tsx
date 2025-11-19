@@ -12,7 +12,7 @@ import {
   CloseCircleIcon,
 } from 'tdesign-icons-react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, DataManagement } from './pages';
+import { Dashboard, Environments, EnvironmentDetail, TrainingJobs, DataManagement, TrainingJobDetail } from './pages';
 import Cluster from './pages/Cluster';
 import TestTabs from './pages/TestTabs';
 import ClusterConfigDialog from './components/ClusterConfigDialog';
@@ -123,6 +123,7 @@ const AppContent = () => {
               <Route path="/" element={<Dashboard />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/training" element={<TrainingJobs />} />
+              <Route path="/training/:id" element={<TrainingJobDetail />} />
               <Route path="/environments" element={<Environments />} />
               <Route path="/environments/:id" element={<EnvironmentDetail />} />
               <Route path="/data" element={<DataManagement />} />
