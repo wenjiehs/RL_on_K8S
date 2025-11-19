@@ -3,8 +3,10 @@
 *.dll
 *.so
 *.dylib
-# api-server (commented out to allow Go source files)
-/tmp/
+
+# Go build artifacts
+api-server
+bin/api-server
 /cmd/api-server/api-server
 
 # Test binary, built with `go test -c`
