@@ -130,18 +130,73 @@ func handlePreviewTrainingCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateTrainingCommand generates the VERL training command based on job configuration
+// getDatasetPath 根据数据集value查找对应的路径
+func getDatasetPath(datasetValue string) string {
+	if trainingConfig == nil {
+		log.Printf("Warning: training config not loaded, using dataset value as path: %s", datasetValue)
+		return datasetValue
+	}
+	
+	for _, dataset := range trainingConfig.DPODatasets {
+		if dataset.Value == datasetValue {
+			log.Printf("Found dataset path for %s: %s", datasetValue, dataset.Path)
+			return dataset.Path
+		}
+	}
+	
+	log.Printf("Warning: dataset %s not found in config, using value as path", datasetValue)
+	return datasetValue
+}
+
+// getModelPath 根据模型value查找对应的路径
+func getModelPath(modelValue string) string {
+	if trainingConfig == nil {
+		log.Printf("Warning: training config not loaded, using model value as path: %s", modelValue)
+		return modelValue
+	}
+	
+	for _, model := range trainingConfig.BaseModels {
+		if model.Value == modelValue {
+			log.Printf("Found model path for %s: %s", modelValue, model.Path)
+			return model.Path
+		}
+	}
+	
+	log.Printf("Warning: model %s not found in config, using value as path", modelValue)
+	return modelValue
+}
+
 func generateTrainingCommand(job *TrainingJobDB) string {
+	// 从配置中查找数据集路径
+	datasetPath := getDatasetPath(job.DPODataset)
+	
+	// 从配置中查找模型路径
+	modelPath := getModelPath(job.BaseModel)
+	
+	// 使用训练任务配置的输出目录
+	outputDir := job.OutputDirectory
+	if outputDir == "" {
+		log.Printf("Warning: output directory not set for job %s, using default", job.ID)
+		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", job.ID)
+	}
+	
+	log.Printf("Generating training command for job %s:", job.ID)
+	log.Printf("  - Dataset: %s -> %s", job.DPODataset, datasetPath)
+	log.Printf("  - Model: %s -> %s", job.BaseModel, modelPath)
+	log.Printf("  - Output: %s", outputDir)
+	log.Printf("  - Log file: %s/training.log", outputDir)
+
 	// 基础配置
 	config := TrainingCommandConfig{
-		// 数据配置
-		TrainFiles:        job.DPODataset,
-		ValFiles:          job.DPODataset,
+		// 数据配置 - 使用从配置文件查找的路径
+		TrainFiles:        datasetPath,
+		ValFiles:          datasetPath,
 		TrainBatchSize:    256,
 		MaxPromptLength:   512,
 		MaxResponseLength: 256,
 
-		// 模型配置
-		ModelPath: job.BaseModel,
+		// 模型配置 - 使用从配置文件查找的路径
+		ModelPath: modelPath,
 
 		// 训练配置
 		ActorLR:           "1e-6",
@@ -160,7 +215,7 @@ func generateTrainingCommand(job *TrainingJobDB) string {
 		// Trainer配置
 		Logger:          "[console]",
 		ValBeforeTrain:  false,
-		DefaultLocalDir: job.OutputDirectory,
+		DefaultLocalDir: outputDir,
 		GPUsPerNode:     job.GPU,
 		NNodes:          2, // 默认2个节点
 		SaveFreq:        1,
@@ -219,8 +274,9 @@ func generateTrainingCommand(job *TrainingJobDB) string {
 	// 分布式配置
 	cmd.WriteString(fmt.Sprintf("    +distributed.backend=%s \\\n", config.Backend))
 
-	// 日志重定向
-	cmd.WriteString(fmt.Sprintf("    2>&1 | tee %s", config.LogFile))
+	// 日志重定向 - 输出到文件（与输出目录一致）
+	logFile := fmt.Sprintf("%s/training.log", outputDir)
+	cmd.WriteString(fmt.Sprintf("    2>&1 | tee %s", logFile))
 
 	return cmd.String()
 }

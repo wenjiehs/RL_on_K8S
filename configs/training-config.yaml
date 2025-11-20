@@ -1,0 +1,107 @@
+# 训练任务配置文件
+# 用于配置创建训练任务时的可选参数
+
+# 基座模型配置
+base_models:
+  - label: "DeepSeek-R1"
+    value: "DeepSeek-R1"
+    description: "DeepSeek-R1模型"
+    path: "/mnt/cfs-turbo/cfs/DeepSeek-R1"
+  
+  - label: "Qwen3-32B"
+    value: "qwen3-32B"
+    description: "通义千问32B参数模型"
+    path: "/mnt/cfs-turbo/cfs/Qwen3-32B"
+  
+  - label: "Qwen3-8B"
+    value: "qwen3-8b"
+    description: "通义千问8B参数模型"
+    path: "/mnt/cfs-turbo/cfs/Qwen3-8B"
+
+  - label: "Qwen3-8B-aime-2024"
+    value: "qwen3-8b-aime-2024"
+    description: "通义千问8B参数模型"
+    path: "/mnt/cfs-turbo/cfs/Qwen3-8B-aime-2024"
+
+# 训练类型配置
+training_types:
+  - label: "强化学习"
+    value: "reinforcement_learning"
+    description: "基于奖励信号的强化学习训练"
+  
+
+# 训练方式配置
+training_methods:
+  - label: "RLHF_DPO"
+    value: "RLHF_DPO"
+    description: "基于人类反馈的强化学习直接偏好优化"
+    compatible_types: ["reinforcement_learning"]
+  
+  - label: "RLHF_PPO"
+    value: "RLHF_PPO"
+    description: "基于人类反馈的强化学习近端策略优化"
+    compatible_types: ["reinforcement_learning"]
+  
+  - label: "DPO"
+    value: "DPO"
+    description: "直接偏好优化"
+    compatible_types: ["reinforcement_learning", "supervised_learning"]
+  
+  - label: "SFT"
+    value: "SFT"
+    description: "监督微调"
+    compatible_types: ["supervised_learning"]
+
+# DPO数据集配置
+dpo_datasets:
+  - label: "AIME 2024 Dataset"
+    value: "aime-2024"
+    path: "/mnt/cfs-turbo/cfs/rl/aime-2024.parquet"
+    description: "AIME 2024数学竞赛数据集"
+    format: "parquet"
+  
+  - label: "Unavailable OpenAssistant Conversations"
+    value: "openassistant"
+    path: "/mnt/cfs/datasets/openassistant/"
+    description: "OpenAssistant对话数据集"
+    format: "json"
+  
+  - label: "Unavailable Alpaca Dataset"
+    value: "alpaca"
+    path: "/mnt/cfs/datasets/alpaca/"
+    description: "Alpaca指令数据集"
+    format: "json"
+  
+  - label: "Unavailable Dolly Dataset"
+    value: "dolly"
+    path: "/mnt/cfs/datasets/dolly/"
+    description: "Databricks Dolly数据集"
+    format: "json"
+  
+  - label: "Unavailable Custom Dataset"
+    value: "custom"
+    path: "/mnt/cfs/datasets/custom/"
+    description: "自定义数据集"
+    format: "custom"
+
+# 常用镜像配置
+common_images:
+  - label: "PyTorch 2.0 + CUDA 11.8"
+    value: "pytorch/pytorch:2.0.1-cuda11.8-cudnn8-runtime"
+    description: "PyTorch 2.0.1 with CUDA 11.8"
+  
+  - label: "PyTorch 2.1 + CUDA 12.1"
+    value: "pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime"
+    description: "PyTorch 2.1.0 with CUDA 12.1"
+  
+  - label: "TensorFlow 2.13 + CUDA 11.8"
+    value: "tensorflow/tensorflow:2.13.0-gpu"
+    description: "TensorFlow 2.13.0 with GPU support"
+  
+  - label: "Ray 2.7 + PyTorch"
+    value: "rayproject/ray-ml:2.7.0-py310-gpu"
+    description: "Ray 2.7.0 with PyTorch and GPU support"
+  
+  - label: "Custom Image"
+    value: "custom"
+    description: "自定义镜像"

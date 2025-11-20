@@ -192,3 +192,18 @@ func DeleteTrainingJob(jobID string) error {
 	log.Printf("Training job deleted: %s", jobID)
 	return nil
 }
+
+// GetTrainingJobDB retrieves a specific training job from database (returns DB struct)
+func GetTrainingJobDB(jobID string) (*TrainingJobDB, error) {
+	var dbJob TrainingJobDB
+
+	// Find job using GORM
+	if err := GetDB().Where("id = ?", jobID).First(&dbJob).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("training job not found: %s", jobID)
+		}
+		return nil, fmt.Errorf("failed to get training job: %w", err)
+	}
+
+	return &dbJob, nil
+}

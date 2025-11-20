@@ -14,8 +14,9 @@ import {
   InputNumber,
   Switch,
 } from 'tdesign-react';
-import { AddIcon, UploadIcon, CloseIcon } from 'tdesign-icons-react';
+import { AddIcon, UploadIcon, CloseIcon, RefreshIcon } from 'tdesign-icons-react';
 import { useNamespaces } from '../hooks/useNamespaces';
+import { useTrainingConfig, ConfigOption, TrainingMethod, DatasetOption } from '../hooks/useTrainingConfig';
 
 const { FormItem } = Form;
 const { TabPanel } = Tabs;
@@ -66,43 +67,33 @@ interface BaseFormData {
   dependencyFiles?: File[];
 }
 
-// 基座模型选项
-const baseModelOptions = [
-  { label: 'LLaMA-7B', value: 'llama-7b', description: 'Meta LLaMA 7B参数模型' },
-  { label: 'LLaMA-13B', value: 'llama-13b', description: 'Meta LLaMA 13B参数模型' },
-  { label: 'Qwen-7B', value: 'qwen-7b', description: '通义千问7B参数模型' },
-  { label: 'Qwen-14B', value: 'qwen-14b', description: '通义千问14B参数模型' },
-  { label: 'ChatGLM3-6B', value: 'chatglm3-6b', description: '智谱ChatGLM3 6B参数模型' },
+// CPU、内存、GPU选项保持硬编码
+const cpuOptions = [
+  { label: '1核', value: 1 },
+  { label: '2核', value: 2 },
+  { label: '4核', value: 4 },
+  { label: '8核', value: 8 },
+  { label: '16核', value: 16 },
+  { label: '32核', value: 32 },
+  { label: '64核', value: 64 },
 ];
 
-// 训练类型选项
-const trainingTypeOptions = [
-  { label: '强化学习', value: 'reinforcement_learning' },
-  { label: '监督学习', value: 'supervised_learning' },
-  { label: '无监督学习', value: 'unsupervised_learning' },
+const memoryOptions = [
+  { label: '4GB', value: 4 },
+  { label: '8GB', value: 8 },
+  { label: '16GB', value: 16 },
+  { label: '32GB', value: 32 },
+  { label: '64GB', value: 64 },
+  { label: '128GB', value: 128 },
+  { label: '256GB', value: 256 },
 ];
 
-// 训练方式选项
-const trainingMethodOptions = [
-  { label: 'RLHF_DPO', value: 'RLHF_DPO', description: '基于人类反馈的强化学习直接偏好优化' },
-  { label: 'RLHF_PPO', value: 'RLHF_PPO', description: '基于人类反馈的强化学习近端策略优化' },
-  { label: 'DPO', value: 'DPO', description: '直接偏好优化' },
-];
-
-// DPO数据集选项
-const dpoDatasetOptions = [
-  { label: 'OpenAssistant Conversations Dataset', value: 'openassistant', path: '/mnt/cfs/datasets/openassistant/' },
-  { label: 'Alpaca Dataset', value: 'alpaca', path: '/mnt/cfs/datasets/alpaca/' },
-  { label: 'Dolly Dataset', value: 'dolly', path: '/mnt/cfs/datasets/dolly/' },
-  { label: 'Custom Dataset', value: 'custom', path: '/mnt/cfs/datasets/custom/' },
-];
-
-// 常用镜像选项
-const imageOptions = [
-  { label: 'PyTorch 2.1.0 + CUDA 12.1', value: 'pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime' },
-  { label: 'TensorFlow 2.14.0 + CUDA 12.1', value: 'tensorflow/tensorflow:2.14.0-gpu' },
-  { label: 'Ray 2.8.0 + PyTorch', value: 'rayproject/ray:2.8.0-py3.10-gpu' },
-  { label: 'Custom Image', value: 'custom' },
+const gpuOptions = [
+  { label: '0卡', value: 0 },
+  { label: '1卡', value: 1 },
+  { label: '2卡', value: 2 },
+  { label: '4卡', value: 4 },
+  { label: '8卡', value: 8 },
 ];
 
 const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
@@ -122,6 +113,32 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
   
   // 使用命名空间Hook
   const { namespaces: namespaceOptions, loading: namespacesLoading } = useNamespaces();
+  
+  // 使用训练配置Hook
+  const { config, loading: configLoading, error: configError, reloadConfig } = useTrainingConfig();
+  
+  // 根据训练类型过滤训练方式
+  const getFilteredTrainingMethods = () => {
+    if (!config || !formData.trainingType) return config?.trainingMethods || [];
+    
+    return config.trainingMethods.filter(method =>
+      method.compatibleTypes.includes(formData.trainingType)
+    );
+  };
+
+  // 处理配置重载
+  const handleReloadConfig = async () => {
+    try {
+      const result = await reloadConfig();
+      if (result.success) {
+        MessagePlugin.success('配置重载成功');
+      } else {
+        MessagePlugin.error(`配置重载失败: ${result.message}`);
+      }
+    } catch (error: any) {
+      MessagePlugin.error(`配置重载失败: ${error.message}`);
+    }
+  };
   
   const [formData, setFormData] = useState<BaseFormData>({
     // 基础信息
@@ -158,16 +175,18 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     }
   }, [visible, formData.namespace]);
 
+
+
+  // 当任务名称改变时，自动生成输出目录（如果当前为空）
   useEffect(() => {
-    // 根据选择的DPO数据集自动设置数据路径
-    const selectedDataset = dpoDatasetOptions.find(option => option.value === formData.dpoDataset);
-    if (selectedDataset) {
+    if (formData.jobName && !formData.outputDirectory) {
+      const jobId = `job-${Date.now()}`;
       setFormData(prev => ({
         ...prev,
-        outputDirectory: selectedDataset.path
+        outputDirectory: `/mnt/cfs-turbo/cfs/${jobId}/checkpoint`
       }));
     }
-  }, [formData.dpoDataset]);
+  }, [formData.jobName]);
 
   // 表单验证函数
   const validateTab = (tab: string): boolean => {
@@ -176,7 +195,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
         return !!(formData.jobName && formData.baseModel && formData.trainingType && formData.trainingMethod);
       case 'environment':
         if (formData.environmentMode === 'select-existing') {
-          return !!(formData.namespace && formData.environmentId);
+          return !!(formData.namespace && formData.environmentId && formData.outputDirectory);
         } else {
           return !!(formData.createNamespace && formData.cpu && formData.memory && formData.image);
         }
@@ -321,7 +340,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
   const generateOutputDirectory = () => {
     if (!formData.jobName) return '';
     const jobId = `job-${Date.now()}`;
-    return `/mnt/cfs/${jobId}/checkpoint`;
+    return `/mnt/cfs-turbo/cfs/${jobId}/checkpoint`;
   };
 
   const handleSubmit = async () => {
@@ -330,7 +349,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     
     // 根据环境配置方式添加不同的必填字段
     if (formData.environmentMode === 'select-existing') {
-      allRequiredFields.push('namespace', 'environmentId');
+      allRequiredFields.push('namespace', 'environmentId', 'outputDirectory');
     } else {
       allRequiredFields.push('createNamespace', 'cpu', 'memory', 'image');
     }
@@ -342,10 +361,16 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       return;
     }
 
-    // 生成输出目录
-    const outputDir = generateOutputDirectory();
+    // 生成或使用输出目录
+    let outputDir = formData.outputDirectory;
+    
+    // 如果是自动创建环境模式且没有输出目录，则生成一个
+    if (formData.environmentMode === 'create-new' && !outputDir) {
+      outputDir = generateOutputDirectory();
+    }
+    
     if (!outputDir) {
-      MessagePlugin.error('无法生成输出目录');
+      MessagePlugin.error('请配置输出目录');
       return;
     }
 
@@ -452,10 +477,89 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     );
   };
 
+  // 配置加载状态处理
+  if (configLoading) {
+    return (
+      <Dialog
+        visible={visible}
+        header="创建训练任务"
+        width={900}
+        onClose={handleClose}
+      >
+        <div style={{ 
+          padding: '60px', 
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '300px'
+        }}>
+          <Loading text="加载配置中..." size="large" />
+          <div style={{ marginTop: '16px', color: 'var(--td-text-color-secondary)' }}>
+            正在加载训练配置，请稍候...
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
+
+  // 配置加载错误处理
+  if (configError) {
+    return (
+      <Dialog
+        visible={visible}
+        header="创建训练任务"
+        width={900}
+        onClose={handleClose}
+      >
+        <div style={{ 
+          padding: '60px', 
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '300px'
+        }}>
+          <div style={{ 
+            fontSize: '16px', 
+            color: 'var(--td-error-color)', 
+            marginBottom: '16px' 
+          }}>
+            ⚠️ 配置加载失败
+          </div>
+          <div style={{ 
+            fontSize: '14px', 
+            color: 'var(--td-text-color-secondary)',
+            marginBottom: '24px',
+            maxWidth: '400px'
+          }}>
+            {configError}
+          </div>
+          <Button theme="primary" onClick={() => window.location.reload()}>
+            重新加载
+          </Button>
+        </div>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       visible={visible}
-      header="创建训练任务"
+      header={
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>创建训练任务</span>
+          <Button
+            variant="text"
+            icon={<RefreshIcon />}
+            onClick={handleReloadConfig}
+            loading={configLoading}
+            title="刷新配置"
+          />
+        </div>
+      }
       width={900}
       onClose={handleClose}
       footer={renderNavigationButtons()}
@@ -497,8 +601,9 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               <Select
                 value={formData.baseModel}
                 onChange={(value) => handleBaseModelChange(value as string)}
-                options={baseModelOptions}
+                options={config?.baseModels || []}
                 placeholder="选择基座模型"
+                loading={configLoading}
               />
             </FormItem>
 
@@ -506,8 +611,9 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               <Select
                 value={formData.trainingType}
                 onChange={(value) => setFormData({ ...formData, trainingType: value as string })}
-                options={trainingTypeOptions}
+                options={config?.trainingTypes || []}
                 placeholder="选择训练类型"
+                loading={configLoading}
               />
             </FormItem>
 
@@ -515,8 +621,9 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               <Select
                 value={formData.trainingMethod}
                 onChange={(value) => handleTrainingMethodChange(value as string)}
-                options={trainingMethodOptions}
+                options={getFilteredTrainingMethods()}
                 placeholder="选择训练方式"
+                loading={configLoading}
               />
             </FormItem>
           </Form>
@@ -612,6 +719,17 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                     disabled={environments.length === 0}
                   />
                 </FormItem>
+
+                <FormItem label="产出目录" name="outputDirectory" requiredMark>
+                  <Input
+                    value={formData.outputDirectory}
+                    onChange={(value) => setFormData({ ...formData, outputDirectory: value })}
+                    placeholder="/mnt/cfs-turbo/cfs/{job-id}/checkpoint"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    训练结果和模型检查点的保存路径
+                  </div>
+                </FormItem>
               </div>
             )}
 
@@ -689,8 +807,9 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                   <Select
                     value={formData.image}
                     onChange={(value) => handleImageChange(value as string)}
-                    options={imageOptions}
+                    options={config?.commonImages || []}
                     placeholder="选择训练镜像"
+                    loading={configLoading}
                   />
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                     选择包含Ray和深度学习框架的镜像
@@ -721,7 +840,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                   <Input
                     value={formData.outputDirectory}
                     onChange={(value) => setFormData({ ...formData, outputDirectory: value })}
-                    placeholder="/mnt/cfs/{job-id}/checkpoint"
+                    placeholder="/mnt/cfs-turbo/cfs/{job-id}/checkpoint"
                   />
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                     训练结果和模型检查点的保存路径
@@ -751,15 +870,16 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               <Select
                 value={formData.dpoDataset}
                 onChange={(value) => handleDpoDatasetChange(value as string)}
-                options={dpoDatasetOptions}
+                options={config?.dpoDatasets || []}
                 placeholder="选择DPO数据集"
+                loading={configLoading}
               />
             </FormItem>
 
             {formData.dpoDataset && (
               <FormItem label="数据路径" name="dataPath">
                 <Input
-                  value={dpoDatasetOptions.find(opt => opt.value === formData.dpoDataset)?.path || ''}
+                  value={config?.dpoDatasets.find(opt => opt.value === formData.dpoDataset)?.path || ''}
                   readonly
                   placeholder="选择数据集后自动显示对应路径"
                 />

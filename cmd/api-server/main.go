@@ -57,6 +57,8 @@ var (
 	currentCluster   string
 	isReconnecting  bool
 	reconnectMutex  sync.Mutex
+	
+
 )
 
 // handleListNamespaces handles the request to list namespaces with Ray clusters
@@ -152,6 +154,13 @@ func main() {
 		log.Println("Database auto migration completed successfully")
 	}
 
+	// Load training configuration
+	if err := loadTrainingConfig(); err != nil {
+		log.Printf("Warning: Failed to load training config: %v", err)
+	} else {
+		log.Println("Training configuration loaded successfully")
+	}
+
 	// Initialize CFS client (removed - using direct filesystem access)
 	
 	mux := http.NewServeMux()
@@ -239,6 +248,9 @@ func main() {
 	mux.HandleFunc("/api/terminal/session/", handleTerminalSession)
 	mux.HandleFunc("/api/terminal/connect/pod", handleTerminalConnectToPod)
 	mux.HandleFunc("/api/terminal/ws", handleWebSocketTerminal)
+	
+	// WebSocket routes for training job logs
+	mux.HandleFunc("/ws/training-jobs/", handleStreamTrainingJobLogs)
 	
 	// CFS Dataset routes with real data access
 	mux.HandleFunc("/api/datasets", func(w http.ResponseWriter, r *http.Request) {
@@ -399,7 +411,7 @@ func main() {
 	mux.HandleFunc("/api/training-jobs", handleListTrainingJobs)
 	mux.HandleFunc("/api/training-jobs/create", handleCreateTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJob)
-	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJob)
 	mux.HandleFunc("/api/training-jobs/pause", handlePauseTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/resume", handleResumeTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/stop", handleStopTrainingJobHandler)
@@ -407,6 +419,11 @@ func main() {
 	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetricsHandler)
 	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpointsHandler)
 	mux.HandleFunc("/api/training-jobs/preview-command", handlePreviewTrainingCommand)
+	mux.HandleFunc("/api/training-jobs/download", handleDownloadTrainingJobLogs)
+	
+	// Training configuration routes
+	mux.HandleFunc("/api/training-config", handleGetTrainingConfig)
+	mux.HandleFunc("/api/training-config/reload", handleReloadTrainingConfig)
 	
 	// Training job routes with ID in path
 	mux.HandleFunc("/api/training-jobs/", func(w http.ResponseWriter, r *http.Request) {
@@ -416,6 +433,23 @@ func main() {
 		if path == "" {
 			handleListTrainingJobs(w, r)
 			return
+		}
+		
+		// Check if this is a file-logs request
+		if path == "file-logs" {
+			handleGetTrainingJobFileLogs(w, r)
+			return
+		}
+		
+		// Check if this is a logs request
+		if strings.HasSuffix(path, "/logs") {
+			jobID := strings.TrimSuffix(path, "/logs")
+			if jobID != "" {
+				// Set the job ID in the request context for the handler to use
+				r = r.WithContext(context.WithValue(r.Context(), "jobID", jobID))
+				handleGetTrainingJobLogs(w, r)
+				return
+			}
 		}
 		
 		switch r.Method {

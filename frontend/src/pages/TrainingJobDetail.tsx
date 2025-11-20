@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { 
   Card, 
   Tabs, 
@@ -18,6 +19,7 @@ import {
   Alert
 } from 'tdesign-react';
 import TrainingMetricsChart from '../components/TrainingMetricsChart';
+import TrainingJobLogs from '../components/TrainingJobLogs';
 import BackButton from '../components/BackButton';
 import { 
   PlayIcon, 
@@ -107,12 +109,7 @@ const mockJobData = {
     accuracy: [0.65, 0.68, 0.72, 0.75, 0.78, 0.81, 0.84, 0.86, 0.88],
     iterations: [100, 200, 300, 400, 500, 600, 700, 800, 900]
   },
-  logs: [
-    { time: '2025-11-19 11:45:23', level: 'INFO', content: 'Epoch 1/10 started' },
-    { time: '2025-11-19 11:45:24', level: 'INFO', content: 'Loss: 0.45' },
-    { time: '2025-11-19 11:45:25', level: 'INFO', content: 'Accuracy: 0.82' },
-    { time: '2025-11-19 11:45:26', level: 'WARN', content: 'GPU memory usage high: 95%' }
-  ],
+
   events: [
     { time: '2025-11-19 11:45:00', user: '用户A', action: '暂停任务', result: '成功' },
     { time: '2025-11-19 11:30:00', user: '用户A', action: '恢复任务', result: '成功' },
@@ -131,10 +128,11 @@ const mockJobData = {
 };
 
 const TrainingJobDetail: React.FC = () => {
-  const [jobData, setJobData] = useState(mockJobData);
-  const [loading, setLoading] = useState(false);
+  const { id } = useParams<{ id: string }>();
+  const [jobData, setJobData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('basic');
-  const [logType, setLogType] = useState('training');
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
 
@@ -160,36 +158,37 @@ const TrainingJobDetail: React.FC = () => {
   // 操作按钮处理
   const handleAction = (action: string) => {
     MessagePlugin.info(`执行${action}操作（模拟）`);
-    
-    // 模拟状态更新
-    if (action === '启动') {
-      setJobData(prev => ({ ...prev, status: 'running' }));
-    } else if (action === '暂停') {
-      setJobData(prev => ({ ...prev, status: 'paused' }));
-    } else if (action === '停止') {
-      setJobData(prev => ({ ...prev, status: 'stopped' }));
-    }
   };
 
   // 刷新数据
   const handleRefresh = () => {
     setLoading(true);
-    setTimeout(() => {
-      // 模拟数据更新
-      setJobData(prev => ({
-        ...prev,
-        progressPercent: Math.min(100, prev.progressPercent + 1),
-        currentIteration: Math.min(prev.numIterations, prev.currentIteration + 10),
-        updatedAt: new Date().toLocaleString('zh-CN')
-      }));
-      setLoading(false);
-      MessagePlugin.success('数据已刷新');
-    }, 1000);
+    // 重新获取数据
+    const fetchJobData = async () => {
+      try {
+        const response = await fetch(`http://localhost:8080/api/training-jobs/detail?id=${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setJobData(data);
+          MessagePlugin.success('数据已刷新');
+        } else {
+          MessagePlugin.error('刷新数据失败');
+        }
+      } catch (error) {
+        console.error('Failed to refresh job data:', error);
+        MessagePlugin.error('刷新数据失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchJobData();
   };
 
   // 计算运行时长
   const calculateRunningTime = () => {
-    const start = new Date(jobData.startedAt);
+    if (!jobData || !jobData.createdAt) return '0小时0分钟';
+    const start = new Date(jobData.createdAt);
     const now = new Date();
     const diff = now.getTime() - start.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -199,6 +198,31 @@ const TrainingJobDetail: React.FC = () => {
 
   // 响应式断点 - 使用window.innerWidth作为替代方案
   const [screenSize, setScreenSize] = useState('desktop');
+
+  // 获取训练任务数据
+  useEffect(() => {
+    if (!id) return;
+
+    const fetchJobData = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`http://localhost:8080/api/training-jobs/detail?id=${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setJobData(data);
+        } else {
+          MessagePlugin.error('获取训练任务详情失败');
+        }
+      } catch (error) {
+        console.error('Failed to fetch job data:', error);
+        MessagePlugin.error('获取训练任务详情失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchJobData();
+  }, [id]);
   
   useEffect(() => {
     const handleResize = () => {
@@ -216,6 +240,17 @@ const TrainingJobDetail: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  if (loading || !jobData) {
+    return (
+      <div className="training-job-detail">
+        <BackButton to="/training" text="返回训练任务列表" />
+        <Loading loading={true} showOverlay>
+          <div style={{ height: '400px' }}></div>
+        </Loading>
+      </div>
+    );
+  }
 
   return (
     <div className="training-job-detail">
@@ -308,44 +343,33 @@ const TrainingJobDetail: React.FC = () => {
                   <Col>{calculateRunningTime()}</Col>
                 </Row>
                 <Row justify="space-between">
-                  <Col>训练进度:</Col>
-                  <Col>{jobData.progressPercent}%</Col>
+                  <Col>任务状态:</Col>
+                  <Col>{jobData.status}</Col>
                 </Row>
-                <Progress 
-                  percent={jobData.progressPercent} 
-                  status="active"
-                  label={`${jobData.currentIteration}/${jobData.numIterations} iterations`}
-                />
                 <Row justify="space-between">
-                  <Col>开始时间:</Col>
-                  <Col>{jobData.startedAt}</Col>
+                  <Col>创建时间:</Col>
+                  <Col>{jobData.createdAt}</Col>
                 </Row>
               </Space>
             </Card>
           </Col>
           
           <Col xs={24} md={12}>
-            <Card title="资源使用情况" bordered={false}>
+            <Card title="资源配置" bordered={false}>
               <Space direction="vertical" style={{ width: '100%' }}>
                 <div>
-                  <div style={{ marginBottom: 4 }}>CPU使用率: {jobData.resources.cpuUsage}%</div>
-                  <Progress percent={jobData.resources.cpuUsage} theme="normal" />
+                  <div style={{ marginBottom: 4 }}>CPU核数: {jobData.cpu || 0}</div>
+                  <Progress percent={75} theme="normal" />
                 </div>
                 <div>
                   <div style={{ marginBottom: 4 }}>
-                    内存使用率: {jobData.resources.memoryUsage}% 
-                    ({jobData.resources.memoryUsed}/{jobData.resources.memoryTotal} GB)
+                    内存: {jobData.memory || 0}GB
                   </div>
-                  <Progress percent={jobData.resources.memoryUsage} theme="normal" />
+                  <Progress percent={60} theme="normal" />
                 </div>
                 <div>
-                  <div style={{ marginBottom: 4 }}>GPU使用率:</div>
-                  {jobData.resources.gpuUsage.map((usage, index) => (
-                    <div key={index} style={{ marginBottom: 4 }}>
-                      GPU {index}: {usage}%
-                      <Progress percent={usage} theme="normal" size="small" />
-                    </div>
-                  ))}
+                  <div style={{ marginBottom: 4 }}>GPU数量: {jobData.gpu || 0}</div>
+                  <Progress percent={80} theme="normal" size="small" />
                 </div>
               </Space>
             </Card>
@@ -403,19 +427,19 @@ const TrainingJobDetail: React.FC = () => {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <div className="info-item">
                       <span className="info-label">环境ID:</span>
-                      <span className="info-value">{jobData.environment.id}</span>
+                      <span className="info-value">{jobData.environmentId}</span>
                     </div>
                     <div className="info-item">
-                      <span className="info-label">环境名称:</span>
-                      <span className="info-value">{jobData.environment.name}</span>
+                      <span className="info-label">命名空间:</span>
+                      <span className="info-value">{jobData.namespace}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">容器镜像:</span>
-                      <span className="info-value">{jobData.environment.image}</span>
+                      <span className="info-value">{jobData.image}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">输出目录:</span>
-                      <span className="info-value">{jobData.environment.outputDirectory}</span>
+                      <span className="info-value">{jobData.outputDirectory}</span>
                     </div>
                   </Space>
                 </Col>
@@ -425,23 +449,23 @@ const TrainingJobDetail: React.FC = () => {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <div className="info-item">
                       <span className="info-label">CPU:</span>
-                      <span className="info-value">{jobData.environment.cpu} 核</span>
+                      <span className="info-value">{jobData.cpu} 核</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">内存:</span>
-                      <span className="info-value">{jobData.environment.memory} GB</span>
+                      <span className="info-value">{jobData.memory} GB</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">GPU:</span>
-                      <span className="info-value">{jobData.environment.gpu} 张</span>
+                      <span className="info-value">{jobData.gpu} 张</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">RDMA:</span>
-                      <span className="info-value">{jobData.environment.enableRDMA ? '已启用' : '已关闭'}</span>
+                      <span className="info-value">{jobData.enableRDMA ? '已启用' : '已关闭'}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">调试模式:</span>
-                      <span className="info-value">{jobData.environment.debugMode ? '已开启' : '已关闭'}</span>
+                      <span className="info-value">{jobData.debugMode ? '已开启' : '已关闭'}</span>
                     </div>
                   </Space>
                 </Col>
@@ -455,42 +479,25 @@ const TrainingJobDetail: React.FC = () => {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <div className="info-item">
                       <span className="info-label">DPO数据集:</span>
-                      <span className="info-value">{jobData.dataset.name}</span>
+                      <span className="info-value">{jobData.dpoDataset}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">数据集路径:</span>
-                      <span className="info-value">{jobData.dataset.path}</span>
-                    </div>
-                    <div className="info-item">
-                      <span className="info-label">数据集状态:</span>
-                      <span className="info-value">
-                        {jobData.dataset.mounted ? 
-                          <Tag theme="success" icon={<CheckCircleIcon />}>已挂载</Tag> : 
-                          <Tag theme="danger" icon={<ErrorCircleIcon />}>未挂载</Tag>
-                        }
-                      </span>
+                      <span className="info-value">{jobData.dataPath}</span>
                     </div>
                   </Space>
                 </Col>
                 
                 <Col xs={24} md={12}>
-                  <h4>数据集统计</h4>
+                  <h4>数据集信息</h4>
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <div className="info-item">
-                      <span className="info-label">总样本数:</span>
-                      <span className="info-value">{jobData.dataset.totalSamples.toLocaleString()}</span>
+                      <span className="info-label">算法类型:</span>
+                      <span className="info-value">{jobData.algorithmType}</span>
                     </div>
                     <div className="info-item">
-                      <span className="info-label">训练集:</span>
-                      <span className="info-value">{jobData.dataset.trainSamples.toLocaleString()}</span>
-                    </div>
-                    <div className="info-item">
-                      <span className="info-label">验证集:</span>
-                      <span className="info-value">{jobData.dataset.valSamples.toLocaleString()}</span>
-                    </div>
-                    <div className="info-item">
-                      <span className="info-label">测试集:</span>
-                      <span className="info-value">{jobData.dataset.testSamples.toLocaleString()}</span>
+                      <span className="info-label">启动脚本:</span>
+                      <span className="info-value">{jobData.startupScript ? '已配置' : '未配置'}</span>
                     </div>
                   </Space>
                 </Col>
@@ -503,216 +510,160 @@ const TrainingJobDetail: React.FC = () => {
                   <h4>启动脚本</h4>
                   <Card size="small">
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <Row justify="space-between">
-                        <Col>
-                          <Space>
-                            <span><strong>文件名:</strong> {jobData.script.filename}</span>
-                            <span><strong>大小:</strong> {jobData.script.size}</span>
-                            <span><strong>上传时间:</strong> {jobData.script.uploadTime}</span>
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Space>
-                            <Button size="small" onClick={() => MessagePlugin.info('查看内容（模拟）')}>
-                              查看内容
-                            </Button>
-                            <Button size="small" icon={<DownloadIcon />} onClick={() => MessagePlugin.info('下载（模拟）')}>
-                              下载
-                            </Button>
-                          </Space>
-                        </Col>
-                      </Row>
-                      <Divider />
-                      <pre style={{ 
-                        background: '#f5f5f5', 
-                        padding: '12px', 
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        overflow: 'auto',
-                        maxHeight: '200px'
-                      }}>
-                        {jobData.script.content}
-                      </pre>
+                      {jobData.startupScript ? (
+                        <>
+                          <Row justify="space-between">
+                            <Col>
+                              <span><strong>脚本状态:</strong> 已配置</span>
+                            </Col>
+                            <Col>
+                              <Space>
+                                <Button size="small" onClick={() => MessagePlugin.info('查看内容（模拟）')}>
+                                  查看内容
+                                </Button>
+                                <Button size="small" icon={<DownloadIcon />} onClick={() => MessagePlugin.info('下载（模拟）')}>
+                                  下载
+                                </Button>
+                              </Space>
+                            </Col>
+                          </Row>
+                          <Divider />
+                          <pre style={{ 
+                            background: '#f5f5f5', 
+                            padding: '12px', 
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            overflow: 'auto',
+                            maxHeight: '200px'
+                          }}>
+                            {jobData.startupScript}
+                          </pre>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                          未配置启动脚本
+                        </div>
+                      )}
                     </Space>
                   </Card>
                 </Col>
               </Row>
             </Tabs.TabPanel>
+            
           </Tabs>
         </Card>
 
-        {/* 训练指标可视化 */}
-        <div style={{ marginTop: 16 }}>
-          <TrainingMetricsChart data={jobData.metrics} />
-        </div>
-
-        {/* 日志查看 */}
-        <Card title="日志查看" style={{ marginTop: 16 }} bordered={false}>
-          <Space style={{ marginBottom: 16 }}>
-            <Button 
-              theme={logType === 'training' ? 'primary' : 'default'}
-              onClick={() => setLogType('training')}
+        {/* 训练监控区域 - 包含指标和日志 */}
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24} xl={14}>
+            {/* 训练日志 - 主要模块 */}
+            <Card 
+              title={
+                <Space>
+                  <span>📋 训练日志</span>
+                  <Tag theme={jobData.status === 'running' ? 'primary' : 'default'} size="small">
+                    {jobData.status === 'running' ? '实时监控中' : '历史查看'}
+                  </Tag>
+                </Space>
+              } 
+              bordered={false}
+              style={{ minHeight: '600px' }}
             >
-              训练日志
-            </Button>
-            <Button 
-              theme={logType === 'error' ? 'primary' : 'default'}
-              onClick={() => setLogType('error')}
-            >
-              错误日志
-            </Button>
-            <Button 
-              theme={logType === 'system' ? 'primary' : 'default'}
-              onClick={() => setLogType('system')}
-            >
-              系统日志
-            </Button>
-          </Space>
+              <TrainingJobLogs jobId={jobData.id} jobStatus={jobData.status} />
+            </Card>
+          </Col>
           
-          <div style={{ 
-            background: '#f5f5f5', 
-            padding: '12px', 
-            borderRadius: '4px',
-            height: '300px',
-            overflow: 'auto',
-            fontFamily: 'monospace',
-            fontSize: '12px'
-          }}>
-            {jobData.logs.map((log, index) => (
-              <div key={index} style={{ marginBottom: '4px' }}>
-                <span style={{ color: '#666' }}>{log.time}</span>
-                <span style={{ 
-                  marginLeft: '8px',
-                  color: log.level === 'ERROR' ? '#f5222d' : log.level === 'WARN' ? '#fa8c16' : '#52c41a'
-                }}>
-                  [{log.level}]
-                </span>
-                <span style={{ marginLeft: '8px' }}>{log.content}</span>
+          <Col xs={24} xl={10}>
+            {/* 训练指标可视化 - 侧边栏 */}
+            <Card 
+              title="📊 训练指标" 
+              bordered={false}
+              style={{ minHeight: '600px' }}
+            >
+              <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                训练指标图表开发中...
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          </Col>
+        </Row>
 
-        {/* 检查点管理和操作历史 */}
+        {/* 底部管理区域 - 检查点和操作历史 */}
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
-            <Card title="模型检查点" bordered={false}>
+            <Card 
+              title={
+                <Space>
+                  <span>💾 模型检查点</span>
+                  <Tag theme="default" size="small">
+                    检查点管理
+                  </Tag>
+                </Space>
+              } 
+              bordered={false}
+            >
               <Space direction="vertical" style={{ width: '100%' }}>
-                <div>
-                  <span>检查点间隔: 100 iterations</span>
-                  <Divider layout="vertical" />
-                  <span>已保存检查点: {jobData.checkpoints.length} 个</span>
+                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  检查点功能开发中...
                 </div>
-                
-                {jobData.checkpoints.map((checkpoint, index) => (
-                  <Card key={index} size="small">
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Row justify="space-between" align="middle">
-                        <Col>
-                          <Space>
-                            {checkpoint.isLatest && <Tag theme="primary">最新</Tag>}
-                            <strong>{checkpoint.id}</strong>
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Space>
-                            <Button size="small" onClick={() => MessagePlugin.info('下载检查点（模拟）')}>
-                              下载
-                            </Button>
-                            <Button size="small" onClick={() => MessagePlugin.info('恢复训练（模拟）')}>
-                              恢复
-                            </Button>
-                            <Button size="small" theme="danger" onClick={() => MessagePlugin.info('删除检查点（模拟）')}>
-                              删除
-                            </Button>
-                          </Space>
-                        </Col>
-                      </Row>
-                      <Row>
-                        <Col span={8}>
-                          <span className="info-label">时间:</span>
-                          <span className="info-value">{checkpoint.time}</span>
-                        </Col>
-                        <Col span={8}>
-                          <span className="info-label">大小:</span>
-                          <span className="info-value">{checkpoint.size}</span>
-                        </Col>
-                        <Col span={8}>
-                          <span className="info-label">Loss:</span>
-                          <span className="info-value">{checkpoint.loss}</span>
-                        </Col>
-                      </Row>
-                    </Space>
-                  </Card>
-                ))}
               </Space>
             </Card>
           </Col>
           
           <Col xs={24} lg={12}>
-            <Card title="操作历史" bordered={false}>
-              <Timeline>
-                {jobData.events.map((event, index) => (
-                  <Timeline.Item key={index}>
-                    <Space direction="vertical" size="small">
-                      <div>
-                        <strong>{event.action}</strong>
-                        <Tag theme="success" size="small" style={{ marginLeft: '8px' }}>
-                          {event.result}
-                        </Tag>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>
-                        {event.user} · {event.time}
-                      </div>
-                    </Space>
-                  </Timeline.Item>
-                ))}
-              </Timeline>
+            <Card 
+              title={
+                <Space>
+                  <span>📝 操作历史</span>
+                  <Tag theme="default" size="small">
+                    任务操作记录
+                  </Tag>
+                </Space>
+              } 
+              bordered={false}
+            >
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  操作历史功能开发中...
+                </div>
+              </Space>
             </Card>
           </Col>
         </Row>
 
         {/* Kubernetes资源信息 */}
-        <Card title="Kubernetes资源" style={{ marginTop: 16 }} bordered={false}>
+        <Card 
+          title={
+            <Space>
+              <span>☸️ Kubernetes资源</span>
+              <Tag theme="success" size="small" icon={<CheckCircleIcon />}>
+                环境信息
+              </Tag>
+            </Space>
+          } 
+          style={{ marginTop: 16 }} 
+          bordered={false}
+        >
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={8}>
               <div className="info-item">
-                <span className="info-label">Namespace:</span>
-                <span className="info-value">{jobData.k8sResources.namespace}</span>
+                <span className="info-label">命名空间:</span>
+                <span className="info-value">{jobData.namespace}</span>
               </div>
             </Col>
             <Col xs={24} sm={12} md={8}>
               <div className="info-item">
-                <span className="info-label">Pod名称:</span>
-                <span className="info-value">{jobData.k8sResources.podName}</span>
+                <span className="info-label">环境ID:</span>
+                <span className="info-value">{jobData.environmentId}</span>
               </div>
             </Col>
             <Col xs={24} sm={12} md={8}>
               <div className="info-item">
-                <span className="info-label">Pod状态:</span>
+                <span className="info-label">任务状态:</span>
                 <span className="info-value">
-                  <Tag theme="success" icon={<CheckCircleIcon />}>
-                    {jobData.k8sResources.podStatus}
+                  <Tag theme={jobData.status === 'running' ? 'primary' : 'default'} icon={<CheckCircleIcon />}>
+                    {jobData.status}
                   </Tag>
                 </span>
-              </div>
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">节点:</span>
-                <span className="info-value">{jobData.k8sResources.node}</span>
-              </div>
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">Service:</span>
-                <span className="info-value">{jobData.k8sResources.service}</span>
-              </div>
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">PVC:</span>
-                <span className="info-value">{jobData.k8sResources.pvc}</span>
               </div>
             </Col>
           </Row>

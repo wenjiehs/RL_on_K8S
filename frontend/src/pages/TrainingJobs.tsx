@@ -91,16 +91,21 @@ const TrainingJobs: React.FC = () => {
 
   const handleStartJob = async (job: TrainingJob) => {
     try {
-      const response = await fetch(`http://localhost:8080/api/training-jobs/${job.id}/start`, {
+      const response = await fetch('http://localhost:8080/api/training-jobs/start', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobId: job.id }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || '启动失败');
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || '启动失败');
       }
 
-      MessagePlugin.success('训练任务已启动');
+      MessagePlugin.success(`训练任务已启动: ${result.podName || ''}`);
       fetchJobs();
     } catch (error: any) {
       console.error('Failed to start job:', error);
