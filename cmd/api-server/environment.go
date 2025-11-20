@@ -104,17 +104,17 @@ type ScaleEnvironmentRequest struct {
 	Replicas int32 `json:"replicas"`
 }
 
-// Predefined framework images - using KubeRay for Ray environments
+// Predefined framework images - using images from training-config.yaml
 var frameworkImages = map[string]string{
-	"ray":       "rayproject/ray:2.9.0",  // KubeRay compatible version
+	"ray":       "ccr.ccs.tencentyun.com/halewang/verl:app-verl0.5-transformers4.55.4-vllm0.10.0-mcore0.13.0-te2.2-v1",  // From training-config.yaml
 	"horovod":   "horovod/horovod:latest",
 	"deepspeed": "deepspeed/deepspeed:latest",
 }
 
-// RayCluster configuration for KubeRay
+// RayCluster configuration - using image from training-config.yaml
 const (
 	defaultRayVersion = "2.9.0"
-	defaultRayImage   = "rayproject/ray:2.9.0"
+	defaultRayImage   = "ccr.ccs.tencentyun.com/halewang/verl:app-verl0.5-transformers4.55.4-vllm0.10.0-mcore0.13.0-te2.2-v1"
 )
 
 // sanitizeName converts a name to be Kubernetes-compliant
@@ -1285,6 +1285,7 @@ func convertDeploymentToDetail(dep *appsv1.Deployment) *EnvironmentDetail {
 }
 
 // createRayCluster creates a KubeRay RayCluster resource using dynamic client
+// Configuration based on ray-single-group in rl namespace
 func createRayCluster(ctx context.Context, name, namespace, image string, workers int32, labels map[string]string) error {
 	// Add nil check for REST config
 	if currentRestConfig == nil {
@@ -1304,7 +1305,118 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 		Resource: "rayclusters",
 	}
 
-	// Build RayCluster spec
+	// Common environment variables (from ray-single-group)
+	commonEnvVars := []map[string]interface{}{
+		{"name": "RAY_GCS_SERVER_PORT", "value": "6379"},
+		{"name": "GLOO_SOCKET_IFNAME", "value": "eth0"},
+		{"name": "MASTER_ADDR", "value": "10.32.5.71"},
+		{"name": "NCCL_SOCKET_IFNAME", "value": "bond0"},
+		{"name": "NCCL_P2P_LEVEL", "value": "NVL"},
+		{"name": "NCCL_P2P_DISABLE", "value": "0"},
+		{"name": "NCCL_TIMEOUT", "value": "86400"},
+		{"name": "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC", "value": "36000"},
+		{"name": "NCCL_CHECK_DISABLE", "value": "1"},
+		{"name": "NCCL_IB_DISABLE", "value": "0"},
+		{"name": "NCCL_IB_TIMEOUT", "value": "24"},
+		{"name": "NCCL_IB_GID_INDEX", "value": "3"},
+		{"name": "NCCL_IB_SL", "value": "3"},
+		{"name": "NCCL_IB_HCA", "value": "mlx5_bond_0"},
+		{"name": "NCCL_IB_CUDA_SUPPORT", "value": "1"},
+		{"name": "NCCL_IB_QPS_PER_CONNECTION", "value": "4"},
+		{"name": "NCCL_IB_TC", "value": "160"},
+		{"name": "NCCL_NVLS_ENABLE", "value": "0"},
+		{"name": "NCCL_COLLNET_ENABLE", "value": "0"},
+		{"name": "NCCL_NET_GDR_LEVEL", "value": "2"},
+		{"name": "NCCL_LL_THRESHOLD", "value": "16384"},
+		{"name": "NCCL_PXN_DISABLE", "value": "1"},
+		{"name": "NCCL_MPI_PROFILE_PRIMS_ENABLE", "value": "0"},
+		{"name": "UCX_NET_DEVICES", "value": "bond1"},
+		{"name": "NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME", "value": "bond1"},
+		{"name": "SHARP_COLL_ENABLE_SAT", "value": "0"},
+		{"name": "NCCL_DEBUG", "value": "INFO"},
+		{"name": "PYTHONPATH", "value": "/workspace/verl"},
+	}
+
+	// Common volume mounts (from ray-single-group)
+	commonVolumeMounts := []map[string]interface{}{
+		{"mountPath": "/mnt/cfs-turbo", "name": "cfs-turbo"},
+		{"mountPath": "/dev/shm", "name": "dev-shm"},
+		{"mountPath": "/usr/src", "name": "usr-src"},
+		{"mountPath": "/lib/modules", "name": "lib-modules", "readOnly": true},
+		{"mountPath": "/dev/infiniband", "name": "dev-infiniband"},
+	}
+
+	// Common volumes (from ray-single-group)
+	commonVolumes := []map[string]interface{}{
+		{
+			"name": "cfs-turbo",
+			"persistentVolumeClaim": map[string]interface{}{
+				"claimName": "rl-cfs-turbo-pv",
+			},
+		},
+		{
+			"name": "dev-shm",
+			"hostPath": map[string]interface{}{
+				"path": "/dev/shm",
+				"type": "Directory",
+			},
+		},
+		{
+			"name": "usr-src",
+			"hostPath": map[string]interface{}{
+				"path": "/usr/src",
+				"type": "Directory",
+			},
+		},
+		{
+			"name": "lib-modules",
+			"hostPath": map[string]interface{}{
+				"path": "/lib/modules",
+				"type": "Directory",
+			},
+		},
+		{
+			"name": "dev-infiniband",
+			"hostPath": map[string]interface{}{
+				"path": "/dev/infiniband",
+				"type": "Directory",
+			},
+		},
+	}
+
+	// Common tolerations - 支持多种 debug 污点
+	commonTolerations := []map[string]interface{}{
+		{
+			"effect":   "NoSchedule",
+			"key":      "debug",
+			"operator": "Exists", // 容忍所有 debug 相关的污点
+		},
+		{
+			"effect":   "NoSchedule",
+			"key":      "user",
+			"operator": "Exists", // 容忍所有 user 相关的污点
+		},
+	}
+
+	// Common node affinity - 使用偏好性而非强制性
+	nodeAffinity := map[string]interface{}{
+		"preferredDuringSchedulingIgnoredDuringExecution": []map[string]interface{}{
+			{
+				"weight": int64(100),
+				"preference": map[string]interface{}{
+					"matchExpressions": []map[string]interface{}{
+						{
+							"key":      "env",
+							"operator": "In",
+							"values":   []string{"debug"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Build RayCluster spec with ray-single-group configuration
 	rayCluster := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "ray.io/v1",
@@ -1315,143 +1427,118 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 				"labels":    labels,
 			},
 			"spec": map[string]interface{}{
-				"rayVersion": defaultRayVersion,
 				"headGroupSpec": map[string]interface{}{
 					"rayStartParams": map[string]interface{}{
 						"dashboard-host": "0.0.0.0",
-						"num-cpus":       "0",
 					},
+					"serviceType": "ClusterIP",
 					"template": map[string]interface{}{
+						"metadata": map[string]interface{}{
+							"labels": map[string]string{
+								"app":  "lws-new",
+								"env":  "debug",
+								"role": "leader",
+							},
+						},
 						"spec": map[string]interface{}{
-							"securityContext": map[string]interface{}{
-								"fsGroup":    int64(100),
-								"runAsUser":  int64(1000),
-								"runAsGroup": int64(100),
+							"affinity": map[string]interface{}{
+								"nodeAffinity": nodeAffinity,
 							},
-							"initContainers": []map[string]interface{}{
-								{
-									"name":  "fix-cfs-permissions",
-									"image": "busybox:latest",
-									"command": []string{
-										"sh",
-										"-c",
-										"mkdir -p /mnt/cfs/rl-data && chown -R 1000:100 /mnt/cfs/rl-data && chmod -R 755 /mnt/cfs/rl-data || true",
-									},
-									"volumeMounts": []map[string]interface{}{
-										{
-											"name":      "rl-data",
-											"mountPath": CFSMountPath,
-										},
-									},
-									"securityContext": map[string]interface{}{
-										"runAsUser": int64(0),
-									},
-								},
-							},
+							"tolerations": commonTolerations,
+							"hostNetwork": true,
+							"hostIPC":     true,
+							"hostPID":     true,
+							"dnsPolicy":   "ClusterFirstWithHostNet",
+							"restartPolicy": "Always",
 							"containers": []map[string]interface{}{
 								{
-									"name":  "ray-head",
-									"image": image,
+									"name":            "ray-head",
+									"image":           image,
+									"imagePullPolicy": "IfNotPresent",
+									"env":             commonEnvVars,
 									"ports": []map[string]interface{}{
-										{"containerPort": int64(6379), "name": "gcs"},
-										{"containerPort": int64(8265), "name": "dashboard"},
-										{"containerPort": int64(10001), "name": "client"},
+										{"containerPort": int64(6379)},
+										{"containerPort": int64(8265)},
+										{"containerPort": int64(10001)},
 									},
 									"resources": map[string]interface{}{
 										"requests": map[string]interface{}{
-											"cpu":    "500m",
-											"memory": "1Gi",
+											"cpu":            "32",
+											"memory":         "128Gi",
+											"nvidia.com/gpu": "8",
 										},
 										"limits": map[string]interface{}{
-											"cpu":    "2000m",
-											"memory": "4Gi",
+											"cpu":            "32",
+											"memory":         "1000Gi",
+											"nvidia.com/gpu": "8",
 										},
 									},
-									"volumeMounts": []map[string]interface{}{
-										{
-											"name":      "rl-data",
-											"mountPath": CFSMountPath,
+									"securityContext": map[string]interface{}{
+										"privileged": true,
+										"capabilities": map[string]interface{}{
+											"add": []string{"IPC_LOCK"},
 										},
 									},
+									"volumeMounts": commonVolumeMounts,
 								},
 							},
-							"volumes": []map[string]interface{}{
-								{
-									"name": "rl-data",
-									"persistentVolumeClaim": map[string]interface{}{
-										"claimName": DefaultPVCName,
-									},
-								},
-							},
+							"volumes": commonVolumes,
 						},
 					},
 				},
 				"workerGroupSpecs": []map[string]interface{}{
 					{
 						"replicas":    int64(workers),
-						"minReplicas": int64(0),
-						"maxReplicas": int64(workers * 2),
-						"groupName":   "worker-group",
-						"rayStartParams": map[string]interface{}{
-							"num-cpus": "1",
-						},
+						"minReplicas": int64(1),
+						"maxReplicas": int64(1),
+						"groupName":   "default-group",
+						"rayStartParams": map[string]interface{}{},
 						"template": map[string]interface{}{
-							"spec": map[string]interface{}{
-								"securityContext": map[string]interface{}{
-									"fsGroup":    int64(100),
-									"runAsUser":  int64(1000),
-									"runAsGroup": int64(100),
+							"metadata": map[string]interface{}{
+								"labels": map[string]string{
+									"app":  "lws-new",
+									"env":  "debug",
+									"role": "worker",
 								},
-								"initContainers": []map[string]interface{}{
+							},
+							"spec": map[string]interface{}{
+								"affinity": map[string]interface{}{
+									"nodeAffinity": nodeAffinity,
+								},
+								"tolerations": commonTolerations,
+								"hostNetwork": true,
+								"hostIPC":     true,
+								"hostPID":     true,
+								"dnsPolicy":   "ClusterFirstWithHostNet",
+								"restartPolicy": "Always",
+								"containers": []map[string]interface{}{
 									{
-										"name":  "fix-cfs-permissions",
-										"image": "busybox:latest",
-										"command": []string{
-											"sh",
-											"-c",
-											"mkdir -p /mnt/cfs/rl-data && chown -R 1000:100 /mnt/cfs/rl-data && chmod -R 755 /mnt/cfs/rl-data || true",
-										},
-										"volumeMounts": []map[string]interface{}{
-											{
-												"name":      "rl-data",
-												"mountPath": CFSMountPath,
+										"name":            "ray-worker",
+										"image":           image,
+										"imagePullPolicy": "IfNotPresent",
+										"env":             commonEnvVars,
+										"resources": map[string]interface{}{
+											"requests": map[string]interface{}{
+												"cpu":            "32",
+												"memory":         "128Gi",
+												"nvidia.com/gpu": int64(8),
+											},
+											"limits": map[string]interface{}{
+												"cpu":            "32",
+												"memory":         "1000Gi",
+												"nvidia.com/gpu": int64(8),
 											},
 										},
 										"securityContext": map[string]interface{}{
-											"runAsUser": int64(0),
-										},
-									},
-								},
-								"containers": []map[string]interface{}{
-									{
-										"name":  "ray-worker",
-										"image": image,
-										"resources": map[string]interface{}{
-											"requests": map[string]interface{}{
-												"cpu":    "200m",
-												"memory": "512Mi",
-											},
-											"limits": map[string]interface{}{
-												"cpu":    "1000m",
-												"memory": "1Gi",
+											"privileged": true,
+											"capabilities": map[string]interface{}{
+												"add": []string{"IPC_LOCK"},
 											},
 										},
-										"volumeMounts": []map[string]interface{}{
-											{
-												"name":      "rl-data",
-												"mountPath": CFSMountPath,
-											},
-										},
+										"volumeMounts": commonVolumeMounts,
 									},
 								},
-								"volumes": []map[string]interface{}{
-									{
-										"name": "rl-data",
-										"persistentVolumeClaim": map[string]interface{}{
-											"claimName": DefaultPVCName,
-										},
-									},
-								},
+								"volumes": commonVolumes,
 							},
 						},
 					},
@@ -1466,6 +1553,6 @@ func createRayCluster(ctx context.Context, name, namespace, image string, worker
 		return fmt.Errorf("failed to create RayCluster: %w (ensure KubeRay operator is installed in the cluster)", err)
 	}
 
-	log.Printf("Successfully created RayCluster '%s' in namespace '%s' with %d workers", name, namespace, workers)
+	log.Printf("Successfully created RayCluster '%s' in namespace '%s' with %d workers (based on ray-single-group configuration)", name, namespace, workers)
 	return nil
 }
