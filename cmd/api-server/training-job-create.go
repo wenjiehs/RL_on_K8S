@@ -70,6 +70,12 @@ func handleCreateTrainingJobHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate job ID
 	jobID := fmt.Sprintf("job-%d", time.Now().Unix())
 
+	// 如果没有指定输出目录，使用 jobName 生成
+	if req.OutputDirectory == "" {
+		req.OutputDirectory = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", req.JobName)
+		log.Printf("Output directory not specified, using job name: %s", req.OutputDirectory)
+	}
+
 	// Save to database
 	if err := saveTrainingJobToDB(jobID, &req); err != nil {
 		log.Printf("Failed to save training job: %v", err)

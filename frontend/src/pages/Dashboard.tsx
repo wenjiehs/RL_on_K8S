@@ -1,128 +1,273 @@
-import React from 'react';
-import { Card, Row, Col, Button, Space, Tag } from 'tdesign-react';
-import { AddIcon, ServerIcon, ControlPlatformIcon, DataIcon, ChartIcon } from 'tdesign-icons-react';
+import React, { useState, useEffect } from 'react';
+import { Card, Row, Col, Button, Space, Tag, Loading, MessagePlugin } from 'tdesign-react';
+import { ServerIcon, ControlPlatformIcon, DataIcon, RollbackIcon } from 'tdesign-icons-react';
 import { useNavigate } from 'react-router-dom';
+
+interface DashboardStats {
+  totalEnvironments: number;
+  runningEnvironments: number;
+  totalTrainingJobs: number;
+  runningTrainingJobs: number;
+  completedTrainingJobs: number;
+  failedTrainingJobs: number;
+  totalPods: number;
+  runningPods: number;
+}
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const statsCards = [
-    { title: 'Running Environments', value: '8', change: '+2', trend: 'up', icon: <ServerIcon size="32px" />, color: '#0d6eff' },
-    { title: 'Active Training Jobs', value: '12', change: '+5', trend: 'up', icon: <ControlPlatformIcon size="32px" />, color: '#00a870' },
-    { title: 'Total Datasets', value: '45', change: '+8', trend: 'up', icon: <DataIcon size="32px" />, color: '#ed7b2f' },
-    { title: 'Avg. Reward (24h)', value: '287.5', change: '+12.3%', trend: 'up', icon: <ChartIcon size="32px" />, color: '#0052d9' },
-  ];
+  // 获取统计数据
+  const fetchDashboardStats = async () => {
+    setLoading(true);
+    try {
+      // 获取环境列表
+      const envResponse = await fetch('http://localhost:8080/api/environments');
+      const envData = await envResponse.json();
+      
+      // 获取训练任务列表
+      const jobsResponse = await fetch('http://localhost:8080/api/training-jobs');
+      const jobsData = await jobsResponse.json();
+      
+      // 获取集群统计
+      const clusterResponse = await fetch('http://localhost:8080/api/cluster/stats');
+      const clusterData = await clusterResponse.json();
+
+      // 计算统计数据
+      // API直接返回数组,不是包装在对象里
+      const environments = Array.isArray(envData) ? envData : [];
+      const runningEnvs = environments.filter((env: any) => env.status === 'Running').length;
+
+      const jobs = Array.isArray(jobsData) ? jobsData : (jobsData.jobs || []);
+      const runningJobs = jobs.filter((job: any) => job.status === 'running').length;
+      const completedJobs = jobs.filter((job: any) => job.status === 'completed').length;
+      const failedJobs = jobs.filter((job: any) => job.status === 'failed').length;
+
+      setStats({
+        totalEnvironments: environments.length,
+        runningEnvironments: runningEnvs,
+        totalTrainingJobs: jobs.length,
+        runningTrainingJobs: runningJobs,
+        completedTrainingJobs: completedJobs,
+        failedTrainingJobs: failedJobs,
+        totalPods: clusterData.totalPods || 0,
+        runningPods: clusterData.runningPods || 0,
+      });
+    } catch (error) {
+      console.error('Failed to fetch dashboard stats:', error);
+      MessagePlugin.error('获取统计数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardStats();
+    // 每30秒刷新一次
+    const interval = setInterval(fetchDashboardStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const quickActions = [
-    { label: 'Create Environment', icon: <ServerIcon />, action: () => navigate('/environments') },
-    { label: 'Start Training Job', icon: <ControlPlatformIcon />, action: () => navigate('/training') },
-    { label: 'Upload Dataset', icon: <DataIcon />, action: () => navigate('/data') },
-    { label: 'View Cluster', icon: <ChartIcon />, action: () => navigate('/cluster') },
+    { 
+      label: '创建环境', 
+      icon: <ServerIcon />, 
+      action: () => navigate('/environments'),
+      theme: 'primary' as const
+    },
+    { 
+      label: '创建训练任务', 
+      icon: <ControlPlatformIcon />, 
+      action: () => navigate('/training'),
+      theme: 'success' as const
+    },
+    { 
+      label: '查看数据集', 
+      icon: <DataIcon />, 
+      action: () => navigate('/data'),
+      theme: 'warning' as const
+    },
+    { 
+      label: '集群管理', 
+      icon: <RollbackIcon />, 
+      action: () => navigate('/cluster'),
+      theme: 'default' as const
+    },
   ];
 
-  const recentActivities = [
-    { time: '2 mins ago', event: 'Training job job-e8b1c3 started', type: 'info' },
-    { time: '15 mins ago', event: 'Environment cartpole-env-1 scaled to 5 replicas', type: 'success' },
-    { time: '1 hour ago', event: 'Training job job-f1a9e7 failed: OOMKilled', type: 'error' },
-    { time: '2 hours ago', event: 'Dataset lunar-lander-manual-set uploaded', type: 'info' },
-  ];
+  if (loading || !stats) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Loading loading={true} text="加载中..." />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Stats Cards */}
-      <Row gutter={[16, 16]}>
-        {statsCards.map((stat, index) => (
-          <Col key={index} span={6}>
-            <Card bordered style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: '14px', color: 'var(--tc-text-secondary)', marginBottom: '8px' }}>
-                    {stat.title}
-                  </div>
-                  <div style={{ fontSize: '28px', fontWeight: '600', color: 'var(--tc-text-primary)', marginBottom: '4px' }}>
-                    {stat.value}
-                  </div>
-                  <Tag theme="success" variant="light" style={{ fontSize: '12px' }}>
-                    {stat.change}
-                  </Tag>
+    <div style={{ padding: '24px' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <h2 style={{ margin: 0, marginBottom: '8px' }}>控制台概览</h2>
+        <p style={{ margin: 0, color: 'var(--td-text-color-secondary)' }}>
+          强化学习训练平台运行状态总览
+        </p>
+      </div>
+
+      {/* 统计卡片 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+        {/* 训练环境统计 */}
+        <Col xs={24} sm={12} md={12} lg={6}>
+          <Card 
+            bordered 
+            hoverable
+            style={{ 
+              borderRadius: '8px', 
+              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/environments')}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', color: 'var(--td-text-color-secondary)', marginBottom: '8px' }}>
+                  训练环境
                 </div>
-                <div style={{ color: stat.color, opacity: 0.2 }}>
-                  {stat.icon}
+                <div style={{ fontSize: '28px', fontWeight: '600', color: 'var(--td-text-color-primary)', marginBottom: '8px' }}>
+                  {stats.totalEnvironments}
                 </div>
+                <Tag theme="success" variant="light" size="small">
+                  运行中: {stats.runningEnvironments}
+                </Tag>
               </div>
-            </Card>
-          </Col>
-        ))}
+              <div style={{ color: '#0052D9', opacity: 0.15 }}>
+                <ServerIcon size="48px" />
+              </div>
+            </div>
+          </Card>
+        </Col>
+
+        {/* 训练任务统计 */}
+        <Col xs={24} sm={12} md={12} lg={6}>
+          <Card 
+            bordered 
+            hoverable
+            style={{ 
+              borderRadius: '8px', 
+              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/training')}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', color: 'var(--td-text-color-secondary)', marginBottom: '8px' }}>
+                  训练任务
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: '600', color: 'var(--td-text-color-primary)', marginBottom: '8px' }}>
+                  {stats.totalTrainingJobs}
+                </div>
+                <Space size="small">
+                  <Tag theme="primary" variant="light" size="small">
+                    运行: {stats.runningTrainingJobs}
+                  </Tag>
+                  <Tag theme="success" variant="light" size="small">
+                    完成: {stats.completedTrainingJobs}
+                  </Tag>
+                </Space>
+              </div>
+              <div style={{ color: '#00A870', opacity: 0.15 }}>
+                <ControlPlatformIcon size="48px" />
+              </div>
+            </div>
+          </Card>
+        </Col>
+
+        {/* 失败任务统计 */}
+        <Col xs={24} sm={12} md={12} lg={6}>
+          <Card 
+            bordered 
+            hoverable
+            style={{ 
+              borderRadius: '8px', 
+              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/training')}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', color: 'var(--td-text-color-secondary)', marginBottom: '8px' }}>
+                  失败任务
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: '600', color: 'var(--td-text-color-primary)', marginBottom: '8px' }}>
+                  {stats.failedTrainingJobs}
+                </div>
+                <Tag theme="danger" variant="light" size="small">
+                  需要处理
+                </Tag>
+              </div>
+              <div style={{ color: '#E34D59', opacity: 0.15 }}>
+                <ControlPlatformIcon size="48px" />
+              </div>
+            </div>
+          </Card>
+        </Col>
+
+        {/* 集群Pod统计 */}
+        <Col xs={24} sm={12} md={12} lg={6}>
+          <Card 
+            bordered 
+            hoverable
+            style={{ 
+              borderRadius: '8px', 
+              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/cluster')}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', color: 'var(--td-text-color-secondary)', marginBottom: '8px' }}>
+                  集群Pod
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: '600', color: 'var(--td-text-color-primary)', marginBottom: '8px' }}>
+                  {stats.totalPods}
+                </div>
+                <Tag theme="success" variant="light" size="small">
+                  运行中: {stats.runningPods}
+                </Tag>
+              </div>
+              <div style={{ color: '#ED7B2F', opacity: 0.15 }}>
+                <RollbackIcon size="48px" />
+              </div>
+            </div>
+          </Card>
+        </Col>
       </Row>
 
-      {/* Quick Actions */}
-      <Card title="Quick Actions" bordered style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-        <Space size="large">
+      {/* 快速操作 */}
+      <Card 
+        title="快速操作" 
+        bordered 
+        style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+      >
+        <Row gutter={[16, 16]}>
           {quickActions.map((action, index) => (
-            <Button
-              key={index}
-              icon={action.icon}
-              onClick={action.action}
-              style={{ minWidth: '160px' }}
-            >
-              {action.label}
-            </Button>
+            <Col key={index} xs={12} sm={6} md={6} lg={6}>
+              <Button
+                theme={action.theme}
+                icon={action.icon}
+                onClick={action.action}
+                block
+                size="large"
+              >
+                {action.label}
+              </Button>
+            </Col>
           ))}
-        </Space>
+        </Row>
       </Card>
-
-      {/* Recent Activities */}
-      <Row gutter={[16, 16]}>
-        <Col span={12}>
-          <Card title="Recent Activities" bordered style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {recentActivities.map((activity, index) => (
-                <div key={index} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <Tag
-                    theme={activity.type === 'error' ? 'danger' : activity.type === 'success' ? 'success' : 'primary'}
-                    variant="light"
-                    style={{ minWidth: '60px', textAlign: 'center' }}
-                  >
-                    {activity.type}
-                  </Tag>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '14px', color: 'var(--tc-text-primary)' }}>{activity.event}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)', marginTop: '4px' }}>
-                      {activity.time}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="System Status" bordered style={{ borderRadius: '8px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--tc-text-secondary)' }}>Cluster Status</span>
-                <Tag theme="success" variant="light">Healthy</Tag>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--tc-text-secondary)' }}>CPU Usage</span>
-                <span style={{ fontWeight: '500' }}>45%</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--tc-text-secondary)' }}>Memory Usage</span>
-                <span style={{ fontWeight: '500' }}>62%</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--tc-text-secondary)' }}>Active Pods</span>
-                <span style={{ fontWeight: '500' }}>28</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--tc-text-secondary)' }}>Storage Used</span>
-                <span style={{ fontWeight: '500' }}>156 GB / 500 GB</span>
-              </div>
-            </div>
-          </Card>
-        </Col>
-      </Row>
     </div>
   );
 };

@@ -418,6 +418,8 @@ func main() {
 	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJob)
 	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetricsHandler)
 	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpointsHandler)
+	mux.HandleFunc("/api/training-jobs/checkpoint/download", handleDownloadCheckpointHandler)
+	mux.HandleFunc("/api/training-jobs/checkpoint/delete", handleDeleteCheckpointHandler)
 	mux.HandleFunc("/api/training-jobs/preview-command", handlePreviewTrainingCommand)
 	mux.HandleFunc("/api/training-jobs/download", handleDownloadTrainingJobLogs)
 	

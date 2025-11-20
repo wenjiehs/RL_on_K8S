@@ -180,17 +180,6 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
 
 
 
-  // 当任务名称改变时，自动生成输出目录（如果当前为空）
-  useEffect(() => {
-    if (formData.jobName && !formData.outputDirectory) {
-      const jobId = `job-${Date.now()}`;
-      setFormData(prev => ({
-        ...prev,
-        outputDirectory: `/mnt/cfs-turbo/cfs/${jobId}/checkpoint`
-      }));
-    }
-  }, [formData.jobName]);
-
   // 表单验证函数
   const validateTab = (tab: string): boolean => {
     switch (tab) {
@@ -198,7 +187,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
         return !!(formData.jobName && formData.baseModel && formData.trainingType && formData.trainingMethod);
       case 'environment':
         if (formData.environmentMode === 'select-existing') {
-          return !!(formData.namespace && formData.environmentId && formData.outputDirectory);
+          return !!(formData.namespace && formData.environmentId);
         } else {
           return !!(formData.createNamespace && formData.cpu && formData.memory && formData.image);
         }
@@ -340,19 +329,13 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     setFormData({ ...formData, dependencyFiles: files });
   };
 
-  const generateOutputDirectory = () => {
-    if (!formData.jobName) return '';
-    const jobId = `job-${Date.now()}`;
-    return `/mnt/cfs-turbo/cfs/${jobId}/checkpoint`;
-  };
-
   const handleSubmit = async () => {
     // 验证所有必填字段
     let allRequiredFields = ['jobName', 'baseModel', 'trainingType', 'trainingMethod', 'dpoDataset'];
     
     // 根据环境配置方式添加不同的必填字段
     if (formData.environmentMode === 'select-existing') {
-      allRequiredFields.push('namespace', 'environmentId', 'outputDirectory');
+      allRequiredFields.push('namespace', 'environmentId');
     } else {
       allRequiredFields.push('createNamespace', 'cpu', 'memory', 'image');
     }
@@ -364,18 +347,8 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       return;
     }
 
-    // 生成或使用输出目录
+    // 使用输出目录（如果为空，后端会自动生成）
     let outputDir = formData.outputDirectory;
-    
-    // 如果是自动创建环境模式且没有输出目录，则生成一个
-    if (formData.environmentMode === 'create-new' && !outputDir) {
-      outputDir = generateOutputDirectory();
-    }
-    
-    if (!outputDir) {
-      MessagePlugin.error('请配置输出目录');
-      return;
-    }
 
     setLoading(true);
     try {
@@ -585,10 +558,13 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
           <Form labelWidth={140} style={{ marginTop: 16 }}>
             <FormItem label="任务名称" name="jobName" requiredMark>
               <Input
-                placeholder="请输入任务名称"
+                placeholder="如: train1, dpo-llama-7b, test-gpu-manual"
                 value={formData.jobName}
                 onChange={(value) => setFormData({ ...formData, jobName: value })}
               />
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                任务名称将用作存储路径标识符，建议使用字母、数字和连字符
+              </div>
             </FormItem>
 
             <FormItem label="任务描述" name="jobDescription">
@@ -738,14 +714,16 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                   />
                 </FormItem>
 
-                <FormItem label="产出目录" name="outputDirectory" requiredMark>
+                <FormItem label="产出目录" name="outputDirectory">
                   <Input
                     value={formData.outputDirectory}
                     onChange={(value) => setFormData({ ...formData, outputDirectory: value })}
-                    placeholder="/mnt/cfs-turbo/cfs/{job-id}/checkpoint"
+                    placeholder={`/mnt/cfs-turbo/cfs/${formData.jobName || '{job-name}'}/checkpoint`}
                   />
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                    训练结果和模型检查点的保存路径
+                  <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px' }}>
+                    {formData.jobName 
+                      ? `💡 留空将自动生成: /mnt/cfs-turbo/cfs/${formData.jobName}/checkpoint`
+                      : '💡 留空将自动使用任务名称生成路径'}
                   </div>
                 </FormItem>
               </div>
@@ -858,10 +836,12 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                   <Input
                     value={formData.outputDirectory}
                     onChange={(value) => setFormData({ ...formData, outputDirectory: value })}
-                    placeholder="/mnt/cfs-turbo/cfs/{job-id}/checkpoint"
+                    placeholder={`/mnt/cfs-turbo/cfs/${formData.jobName || '{job-name}'}/checkpoint`}
                   />
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                    训练结果和模型检查点的保存路径
+                  <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px' }}>
+                    {formData.jobName 
+                      ? `💡 留空将自动生成: /mnt/cfs-turbo/cfs/${formData.jobName}/checkpoint`
+                      : '💡 留空将自动使用任务名称生成路径'}
                   </div>
                 </FormItem>
               </div>
@@ -898,7 +878,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               <FormItem label="数据路径" name="dataPath">
                 <Input
                   value={config?.dpoDatasets.find(opt => opt.value === formData.dpoDataset)?.path || ''}
-                  readonly
+                  disabled
                   placeholder="选择数据集后自动显示对应路径"
                 />
               </FormItem>

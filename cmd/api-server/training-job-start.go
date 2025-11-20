@@ -241,7 +241,8 @@ func (e *TrainingJobExecutor) executeTrainingJob() {
 	// 日志文件路径与输出目录保持一致，使用任务的output_directory
 	outputDir := e.job.OutputDirectory
 	if outputDir == "" {
-		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", e.job.ID)
+		log.Printf("Warning: output directory not set for job %s, using job name: %s", e.job.ID, e.job.Name)
+		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", e.job.Name)
 	}
 	logFile := fmt.Sprintf("%s/training.log", outputDir)
 	pidFile := fmt.Sprintf("/tmp/training-job-%s.pid", e.job.ID)
@@ -486,10 +487,11 @@ fi
 func (e *TrainingJobExecutor) createLogDirectory() error {
 	ctx := context.Background()
 	
-	// 使用任务的输出目录路径，与generateTrainingCommand保持一致
+	// 使用任务的输出目录路径，与generateTrainingCommand保持一致，统一使用 jobName
 	outputDir := e.job.OutputDirectory
 	if outputDir == "" {
-		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", e.job.ID)
+		log.Printf("Warning: output directory not set for job %s, using job name: %s", e.job.ID, e.job.Name)
+		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", e.job.Name)
 	}
 	
 	createDirCommand := []string{

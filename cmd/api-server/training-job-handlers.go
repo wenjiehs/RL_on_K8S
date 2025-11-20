@@ -276,48 +276,6 @@ func handleGetTrainingJobMetricsHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleListCheckpoints handles listing training job checkpoints
-func handleListCheckpointsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Content-Type", "application/json")
-
-	jobID := r.URL.Query().Get("id")
-	if jobID == "" {
-		http.Error(w, "Job ID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get job from database
-	job, err := GetTrainingJob(jobID)
-	if err != nil {
-		log.Printf("Failed to get training job: %v", err)
-		http.Error(w, "Training job not found", http.StatusNotFound)
-		return
-	}
-
-	// List checkpoints from output directory
-	checkpoints, err := listCheckpointsFromCFS(job.OutputDirectory)
-	if err != nil {
-		log.Printf("Failed to list checkpoints: %v", err)
-		http.Error(w, "Failed to list checkpoints", http.StatusInternalServerError)
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success":    true,
-		"job":        job,
-		"checkpoints": checkpoints,
-	})
-}
-
 // Helper functions for Kubernetes job management
 
 func getKubernetesJobMetrics(jobID string) (map[string]interface{}, error) {
@@ -392,27 +350,4 @@ func getKubernetesJobMetrics(jobID string) (map[string]interface{}, error) {
 	}
 
 	return metrics, nil
-}
-
-func listCheckpointsFromCFS(outputDir string) ([]map[string]interface{}, error) {
-	// This would integrate with CFS Data Accessor to list files
-	// For now, return mock data
-	checkpoints := []map[string]interface{}{
-		{
-			"name":       "checkpoint-1",
-			"path":       outputDir + "/checkpoint-1",
-			"size":       "1.2GB",
-			"created":    "2024-01-01T10:00:00Z",
-			"status":     "completed",
-		},
-		{
-			"name":       "checkpoint-2",
-			"path":       outputDir + "/checkpoint-2",
-			"size":       "1.5GB",
-			"created":    "2024-01-01T12:00:00Z",
-			"status":     "in_progress",
-		},
-	}
-
-	return checkpoints, nil
 }

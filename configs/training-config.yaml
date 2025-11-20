@@ -99,7 +99,7 @@ common_images:
     description: "TensorFlow 2.13.0 with GPU support"
   
   - label: "Ray 2.7 + PyTorch"
-    value: "rayproject/ray-ml:2.7.0-py310-gpu"
+    value: "ccr.ccs.tencentyun.com/halewang/verl:app-verl0.5-transformers4.55.4-vllm0.10.0-mcore0.13.0-te2.2-v1"
     description: "Ray 2.7.0 with PyTorch and GPU support"
   
   - label: "Custom Image"

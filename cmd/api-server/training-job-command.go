@@ -173,14 +173,15 @@ func generateTrainingCommand(job *TrainingJobDB) string {
 	// 从配置中查找模型路径
 	modelPath := getModelPath(job.BaseModel)
 	
-	// 使用训练任务配置的输出目录
+	// 统一使用 jobName 作为输出目录的标识符
 	outputDir := job.OutputDirectory
 	if outputDir == "" {
-		log.Printf("Warning: output directory not set for job %s, using default", job.ID)
-		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", job.ID)
+		log.Printf("Warning: output directory not set for job %s, using job name: %s", job.ID, job.Name)
+		outputDir = fmt.Sprintf("/mnt/cfs-turbo/cfs/%s/checkpoint", job.Name)
 	}
 	
 	log.Printf("Generating training command for job %s:", job.ID)
+	log.Printf("  - Job Name: %s", job.Name)
 	log.Printf("  - Dataset: %s -> %s", job.DPODataset, datasetPath)
 	log.Printf("  - Model: %s -> %s", job.BaseModel, modelPath)
 	log.Printf("  - Output: %s", outputDir)

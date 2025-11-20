@@ -613,7 +613,7 @@ const TrainingJobs: React.FC = () => {
           </p>
           <Textarea
             value={previewCommand}
-            readonly
+            readOnly
             autosize={{ minRows: 15, maxRows: 30 }}
             style={{
               fontFamily: 'monospace',

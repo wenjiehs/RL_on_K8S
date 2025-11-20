@@ -21,6 +21,7 @@ import {
 import TrainingMetricsChart from '../components/TrainingMetricsChart';
 import TrainingJobLogs from '../components/TrainingJobLogs';
 import BackButton from '../components/BackButton';
+import CheckpointManager from '../components/CheckpointManager';
 import { 
   PlayIcon, 
   PauseIcon, 
@@ -333,48 +334,131 @@ const TrainingJobDetail: React.FC = () => {
           </Row>
         </Card>
 
-        {/* 实时状态监控 */}
-        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-          <Col xs={24} md={12}>
-            <Card title="运行状态" bordered={false}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Row justify="space-between">
-                  <Col>运行时长:</Col>
-                  <Col>{calculateRunningTime()}</Col>
-                </Row>
-                <Row justify="space-between">
-                  <Col>任务状态:</Col>
-                  <Col>{jobData.status}</Col>
-                </Row>
-                <Row justify="space-between">
-                  <Col>创建时间:</Col>
-                  <Col>{jobData.createdAt}</Col>
-                </Row>
-              </Space>
-            </Card>
-          </Col>
-          
-          <Col xs={24} md={12}>
-            <Card title="资源配置" bordered={false}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <div>
-                  <div style={{ marginBottom: 4 }}>CPU核数: {jobData.cpu || 0}</div>
-                  <Progress percent={75} theme="normal" />
-                </div>
-                <div>
-                  <div style={{ marginBottom: 4 }}>
-                    内存: {jobData.memory || 0}GB
-                  </div>
-                  <Progress percent={60} theme="normal" />
-                </div>
-                <div>
-                  <div style={{ marginBottom: 4 }}>GPU数量: {jobData.gpu || 0}</div>
-                  <Progress percent={80} theme="normal" size="small" />
-                </div>
-              </Space>
-            </Card>
-          </Col>
-        </Row>
+        {/* 综合信息展示区域 */}
+        <Card 
+          title={
+            <Space>
+              <span>📋 任务信息概览</span>
+              <Tag theme="primary" size="small">综合视图</Tag>
+            </Space>
+          }
+          style={{ marginTop: 16 }} 
+          bordered={false}
+        >
+          <Row gutter={[24, 16]}>
+            {/* 运行状态 */}
+            <Col xs={24} sm={24} md={12} lg={8}>
+              <div style={{ 
+                padding: '16px', 
+                backgroundColor: 'var(--td-bg-color-container)', 
+                borderRadius: '8px',
+                border: '1px solid var(--td-border-level-1-color)'
+              }}>
+                <h4 style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--td-text-color-secondary)' }}>
+                  ⏱️ 运行状态
+                </h4>
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>任务状态:</Col>
+                    <Col>
+                      <Tag 
+                        theme={
+                          jobData.status === 'running' ? 'success' : 
+                          jobData.status === 'completed' ? 'primary' :
+                          jobData.status === 'failed' ? 'danger' : 'default'
+                        }
+                      >
+                        {jobData.status}
+                      </Tag>
+                    </Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>运行时长:</Col>
+                    <Col style={{ fontWeight: 500 }}>{calculateRunningTime()}</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>创建时间:</Col>
+                    <Col>{jobData.createdAt}</Col>
+                  </Row>
+                </Space>
+              </div>
+            </Col>
+
+            {/* 资源配置 */}
+            <Col xs={24} sm={24} md={12} lg={8}>
+              <div style={{ 
+                padding: '16px', 
+                backgroundColor: 'var(--td-bg-color-container)', 
+                borderRadius: '8px',
+                border: '1px solid var(--td-border-level-1-color)'
+              }}>
+                <h4 style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--td-text-color-secondary)' }}>
+                  💻 资源配置
+                </h4>
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>CPU:</Col>
+                    <Col style={{ fontWeight: 500 }}>{jobData.cpu || 0} 核</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>内存:</Col>
+                    <Col style={{ fontWeight: 500 }}>{jobData.memory || 0} GB</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>GPU:</Col>
+                    <Col style={{ fontWeight: 500 }}>{jobData.gpu || 0} 张</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>RDMA:</Col>
+                    <Col>
+                      <Tag theme={jobData.enableRDMA ? 'success' : 'default'} size="small">
+                        {jobData.enableRDMA ? '已启用' : '已关闭'}
+                      </Tag>
+                    </Col>
+                  </Row>
+                </Space>
+              </div>
+            </Col>
+
+            {/* Kubernetes 资源 */}
+            <Col xs={24} sm={24} md={12} lg={8}>
+              <div style={{ 
+                padding: '16px', 
+                backgroundColor: 'var(--td-bg-color-container)', 
+                borderRadius: '8px',
+                border: '1px solid var(--td-border-level-1-color)'
+              }}>
+                <h4 style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--td-text-color-secondary)' }}>
+                  ☸️ Kubernetes 资源
+                </h4>
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>命名空间:</Col>
+                    <Col style={{ fontWeight: 500 }}>{jobData.namespace}</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>环境ID:</Col>
+                    <Col style={{ fontFamily: 'monospace', fontSize: '12px' }}>{jobData.environmentId}</Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>容器镜像:</Col>
+                    <Col style={{ fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={jobData.image}>
+                      {jobData.image?.split('/').pop() || '-'}
+                    </Col>
+                  </Row>
+                  <Row justify="space-between">
+                    <Col style={{ color: 'var(--td-text-color-secondary)' }}>调试模式:</Col>
+                    <Col>
+                      <Tag theme={jobData.debugMode ? 'warning' : 'default'} size="small">
+                        {jobData.debugMode ? '已开启' : '已关闭'}
+                      </Tag>
+                    </Col>
+                  </Row>
+                </Space>
+              </div>
+            </Col>
+          </Row>
+        </Card>
 
         {/* 配置信息 */}
         <Card style={{ marginTop: 16 }} bordered={false}>
@@ -553,10 +637,10 @@ const TrainingJobDetail: React.FC = () => {
           </Tabs>
         </Card>
 
-        {/* 训练监控区域 - 包含指标和日志 */}
+        {/* 日志和Checkpoint管理 */}
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-          <Col xs={24} xl={14}>
-            {/* 训练日志 - 主要模块 */}
+          <Col xs={24} lg={14}>
+            {/* 训练日志 */}
             <Card 
               title={
                 <Space>
@@ -573,101 +657,10 @@ const TrainingJobDetail: React.FC = () => {
             </Card>
           </Col>
           
-          <Col xs={24} xl={10}>
-            {/* 训练指标可视化 - 侧边栏 */}
-            <Card 
-              title="📊 训练指标" 
-              bordered={false}
-              style={{ minHeight: '600px' }}
-            >
-              <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                训练指标图表开发中...
-              </div>
-            </Card>
+          <Col xs={24} lg={10}>
+            <CheckpointManager jobId={jobData.id} jobStatus={jobData.status} />
           </Col>
         </Row>
-
-        {/* 底部管理区域 - 检查点和操作历史 */}
-        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <span>💾 模型检查点</span>
-                  <Tag theme="default" size="small">
-                    检查点管理
-                  </Tag>
-                </Space>
-              } 
-              bordered={false}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                  检查点功能开发中...
-                </div>
-              </Space>
-            </Card>
-          </Col>
-          
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <span>📝 操作历史</span>
-                  <Tag theme="default" size="small">
-                    任务操作记录
-                  </Tag>
-                </Space>
-              } 
-              bordered={false}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                  操作历史功能开发中...
-                </div>
-              </Space>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Kubernetes资源信息 */}
-        <Card 
-          title={
-            <Space>
-              <span>☸️ Kubernetes资源</span>
-              <Tag theme="success" size="small" icon={<CheckCircleIcon />}>
-                环境信息
-              </Tag>
-            </Space>
-          } 
-          style={{ marginTop: 16 }} 
-          bordered={false}
-        >
-          <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">命名空间:</span>
-                <span className="info-value">{jobData.namespace}</span>
-              </div>
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">环境ID:</span>
-                <span className="info-value">{jobData.environmentId}</span>
-              </div>
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <div className="info-item">
-                <span className="info-label">任务状态:</span>
-                <span className="info-value">
-                  <Tag theme={jobData.status === 'running' ? 'primary' : 'default'} icon={<CheckCircleIcon />}>
-                    {jobData.status}
-                  </Tag>
-                </span>
-              </div>
-            </Col>
-          </Row>
-        </Card>
       </Loading>
 
       {/* 删除确认弹窗 */}
