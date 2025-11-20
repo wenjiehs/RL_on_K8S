@@ -276,16 +276,6 @@ const TrainingJobs: React.FC = () => {
 
     return (
       <div className="action-buttons-container">
-        {/* 详情按钮 - 始终显示 */}
-        <Button
-          theme="primary"
-          variant="text"
-          size="small"
-          onClick={() => navigate(`/training/${job.id}`)}
-        >
-          详情
-        </Button>
-
         {/* 预览命令按钮 - 始终显示 */}
         <Button
           theme="default"
