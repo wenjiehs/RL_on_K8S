@@ -34,8 +34,8 @@ type Environment struct {
 	Replicas    int32             `json:"replicas"`
 	Status      string            `json:"status"` // pending, running, stopped, error
 	Namespace   string            `json:"namespace"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty" gorm:"type:text;serializer:json"`
+	Annotations map[string]string `json:"annotations,omitempty" gorm:"type:text;serializer:json"`
 	CreatedAt   time.Time         `json:"createdAt"`
 	UpdatedAt   time.Time         `json:"updatedAt"`
 }

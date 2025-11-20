@@ -34,6 +34,7 @@ var upgrader = websocket.Upgrader{
 		       origin == "http://localhost:5175" ||
 		       origin == "http://localhost:3000" // Additional common dev port
 	},
+	HandshakeTimeout: 10 * time.Second,
 }
 
 // TerminalMessage represents messages sent between client and server
