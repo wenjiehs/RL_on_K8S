@@ -16,6 +16,7 @@ import (
 	"github.com/rs/cors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -58,7 +59,7 @@ var (
 	reconnectMutex  sync.Mutex
 )
 
-// handleListNamespaces handles the request to list all namespaces
+// handleListNamespaces handles the request to list namespaces with Ray clusters
 func handleListNamespaces(w http.ResponseWriter, r *http.Request) {
 	if currentClientset == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
@@ -77,15 +78,53 @@ func handleListNamespaces(w http.ResponseWriter, r *http.Request) {
 
 	var namespaceList []map[string]interface{}
 	for _, ns := range namespaces.Items {
-		namespaceList = append(namespaceList, map[string]interface{}{
-			"name":   ns.Name,
-			"status": ns.Status.Phase,
-			"labels": ns.Labels,
-			"created": ns.CreationTimestamp.Format("2006-01-02 15:04:05"),
-		})
+		// Check if this namespace contains Ray clusters
+		hasRayClusters, err := checkNamespaceHasRayClusters(ns.Name)
+		if err != nil {
+			log.Printf("Error checking Ray clusters in namespace %s: %v", ns.Name, err)
+			continue
+		}
+
+		if hasRayClusters {
+			namespaceList = append(namespaceList, map[string]interface{}{
+				"name":   ns.Name,
+				"status": ns.Status.Phase,
+				"labels": ns.Labels,
+				"created": ns.CreationTimestamp.Format("2006-01-02 15:04:05"),
+			})
+		}
 	}
 
 	respondJSON(w, http.StatusOK, namespaceList)
+}
+
+// checkNamespaceHasRayClusters checks if a namespace contains any RayCluster resources
+func checkNamespaceHasRayClusters(namespace string) (bool, error) {
+	// Use dynamic client to list RayCluster resources
+	dynamicClient, err := dynamic.NewForConfig(currentRestConfig)
+	if err != nil {
+		return false, err
+	}
+
+	// RayCluster GVR: ray.io/v1alpha1/rayclusters
+	rayClusterGVR := schema.GroupVersionResource{
+		Group:    "ray.io",
+		Version:  "v1alpha1",
+		Resource: "rayclusters",
+	}
+
+	// List RayClusters in the namespace
+	rayClusters, err := dynamicClient.Resource(rayClusterGVR).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		// If the resource doesn't exist or access is denied, assume no Ray clusters
+		if strings.Contains(err.Error(), "the server doesn't have a resource type") ||
+		   strings.Contains(err.Error(), "forbidden") {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return len(rayClusters.Items) > 0, nil
 }
 
 func main() {
@@ -357,16 +396,37 @@ func main() {
 	mux.HandleFunc("/api/storage/initialize", handleInitializeStorage)
 	
 	// Training job routes
-	mux.HandleFunc("/api/training-jobs", handleListTrainingJobsHandler)
+	mux.HandleFunc("/api/training-jobs", handleListTrainingJobs)
 	mux.HandleFunc("/api/training-jobs/create", handleCreateTrainingJobHandler)
-	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/detail", handleGetTrainingJob)
 	mux.HandleFunc("/api/training-jobs/start", handleStartTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/pause", handlePauseTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/resume", handleResumeTrainingJobHandler)
 	mux.HandleFunc("/api/training-jobs/stop", handleStopTrainingJobHandler)
-	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJobHandler)
+	mux.HandleFunc("/api/training-jobs/delete", handleDeleteTrainingJob)
 	mux.HandleFunc("/api/training-jobs/metrics", handleGetTrainingJobMetricsHandler)
 	mux.HandleFunc("/api/training-jobs/checkpoints", handleListCheckpointsHandler)
+	mux.HandleFunc("/api/training-jobs/preview-command", handlePreviewTrainingCommand)
+	
+	// Training job routes with ID in path
+	mux.HandleFunc("/api/training-jobs/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract job ID from URL path
+		path := strings.TrimPrefix(r.URL.Path, "/api/training-jobs/")
+		
+		if path == "" {
+			handleListTrainingJobs(w, r)
+			return
+		}
+		
+		switch r.Method {
+		case http.MethodGet:
+			handleGetTrainingJob(w, r)
+		case http.MethodDelete:
+			handleDeleteTrainingJob(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	
 	// CORS middleware
 	handler := cors.New(cors.Options{

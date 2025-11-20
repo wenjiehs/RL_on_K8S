@@ -20,6 +20,12 @@ const WebTerminal: React.FC<WebTerminalProps> = ({ visible, onClose, envName, na
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
+    console.log('WebTerminal useEffect called');
+    console.log('visible:', visible);
+    console.log('terminalRef.current:', terminalRef.current);
+    console.log('envName:', envName);
+    console.log('namespace:', namespace);
+    
     if (!visible || !terminalRef.current) return;
 
     // Initialize terminal

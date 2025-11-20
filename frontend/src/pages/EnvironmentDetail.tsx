@@ -17,8 +17,10 @@ import {
   LinkIcon,
   CheckCircleIcon,
   ErrorCircleIcon,
-  TimeIcon
+  TimeIcon,
+  TerminalIcon
 } from 'tdesign-icons-react';
+import WebTerminal from '../components/WebTerminal';
 
 interface EnvironmentDetail {
   id: string;
@@ -66,6 +68,8 @@ const EnvironmentDetail: React.FC = () => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState('');
   const [dashboardInfo, setDashboardInfo] = useState<DashboardURLResponse | null>(null);
+  const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalEnv, setTerminalEnv] = useState<EnvironmentDetail | null>(null);
 
   const fetchDetail = async () => {
     setLoading(true);
@@ -179,6 +183,34 @@ const EnvironmentDetail: React.FC = () => {
     }
   };
 
+  const handleOpenTerminal = () => {
+    console.log('handleOpenTerminal called');
+    console.log('detail:', detail);
+    console.log('detail.status:', detail?.status);
+    console.log('detail.framework:', detail?.framework);
+    
+    if (!detail) {
+      console.log('No detail available');
+      MessagePlugin.error('Environment details not loaded');
+      return;
+    }
+    
+    if (detail.status !== 'running') {
+      console.log('Environment not running, status:', detail.status);
+      MessagePlugin.warning('Only running environments can be connected');
+      return;
+    }
+    if (detail.framework !== 'ray') {
+      console.log('Not Ray framework, framework:', detail.framework);
+      MessagePlugin.warning('Terminal connection is only available for Ray environments');
+      return;
+    }
+    
+    console.log('Setting terminal env and visible');
+    setTerminalEnv(detail);
+    setTerminalVisible(true);
+  };
+
   const getStatusTheme = (status: string) => {
     const themeMap: Record<string, 'success' | 'warning' | 'danger' | 'default'> = {
       running: 'success',
@@ -246,6 +278,14 @@ const EnvironmentDetail: React.FC = () => {
                 >
                   {currentStatus}
                 </Tag>
+                <Button 
+                  icon={<TerminalIcon />} 
+                  variant="outline" 
+                  onClick={handleOpenTerminal}
+                  disabled={!detail || detail.status !== 'running'}
+                >
+                  Terminal
+                </Button>
                 <Button 
                   icon={<RefreshIcon />} 
                   variant="outline" 
@@ -457,6 +497,19 @@ const EnvironmentDetail: React.FC = () => {
               )}
             </Space>
           </Card>
+        )}
+
+        {/* WebTerminal */}
+        {terminalEnv && (
+          <WebTerminal
+            visible={terminalVisible}
+            onClose={() => {
+              setTerminalVisible(false);
+              setTerminalEnv(null);
+            }}
+            envName={terminalEnv.name}
+            namespace={terminalEnv.namespace}
+          />
         )}
       </Space>
     </div>
