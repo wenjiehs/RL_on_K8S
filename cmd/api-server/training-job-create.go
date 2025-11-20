@@ -1,20 +1,14 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
-
-	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TrainingJobRequest represents the request to create a training job
+// TrainingJobRequest represents request to create a training job
 type TrainingJobRequest struct {
 	// 基础信息
 	JobName        string `json:"jobName"`
@@ -23,8 +17,15 @@ type TrainingJobRequest struct {
 	TrainingType   string `json:"trainingType"`
 	TrainingMethod string `json:"trainingMethod"`
 
-	// 环境信息
-	EnvironmentID    string `json:"environmentId"`
+	// 环境配置方式
+	EnvironmentMode string `json:"environmentMode"` // select-existing | create-new
+	
+	// 选择已有环境
+	Namespace     string `json:"namespace"`     // 选择已有环境时的命名空间
+	EnvironmentID string `json:"environmentId"`
+	
+	// 自动创建环境
+	CreateNamespace string `json:"createNamespace"` // 自动创建环境时的命名空间
 	CPU             int    `json:"cpu"`
 	Memory          int    `json:"memory"`
 	GPU             int    `json:"gpu"`
@@ -61,34 +62,85 @@ func handleCreateTrainingJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.JobName == "" {
-		http.Error(w, "Job name is required", http.StatusBadRequest)
-		return
-	}
-	if req.BaseModel == "" {
-		http.Error(w, "Base model is required", http.StatusBadRequest)
-		return
-	}
-	if req.TrainingType == "" {
-		http.Error(w, "Training type is required", http.StatusBadRequest)
-		return
-	}
-	if req.TrainingMethod == "" {
-		http.Error(w, "Training method is required", http.StatusBadRequest)
-		return
-	}
-	if req.EnvironmentID == "" {
-		http.Error(w, "Environment ID is required", http.StatusBadRequest)
-		return
-	}
-	if req.DPODataset == "" {
-		http.Error(w, "DPO dataset is required", http.StatusBadRequest)
+	if err := validateTrainingJobRequest(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Generate job ID
 	jobID := fmt.Sprintf("job-%d", time.Now().Unix())
 
+	// Save to database
+	if err := saveTrainingJobToDB(jobID, &req); err != nil {
+		log.Printf("Failed to save training job: %v", err)
+		http.Error(w, "Failed to save training job to database", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Training job created successfully: %s", jobID)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"success": true,
+		"jobId":   jobID,
+		"message": "Training job created successfully",
+	})
+}
+
+// validateTrainingJobRequest validates training job request
+func validateTrainingJobRequest(req *TrainingJobRequest) error {
+	// 基础信息验证
+	if req.JobName == "" {
+		return fmt.Errorf("Job name is required")
+	}
+	if req.BaseModel == "" {
+		return fmt.Errorf("Base model is required")
+	}
+	if req.TrainingType == "" {
+		return fmt.Errorf("Training type is required")
+	}
+	if req.TrainingMethod == "" {
+		return fmt.Errorf("Training method is required")
+	}
+	
+	// 环境配置方式验证
+	if req.EnvironmentMode == "" {
+		return fmt.Errorf("Environment mode is required")
+	}
+	
+	// 根据环境配置方式验证不同字段
+	if req.EnvironmentMode == "select-existing" {
+		if req.Namespace == "" {
+			return fmt.Errorf("Namespace is required when selecting existing environment")
+		}
+		if req.EnvironmentID == "" {
+			return fmt.Errorf("Environment ID is required when selecting existing environment")
+		}
+	} else if req.EnvironmentMode == "create-new" {
+		if req.CreateNamespace == "" {
+			return fmt.Errorf("Create namespace is required when creating new environment")
+		}
+		if req.CPU <= 0 {
+			return fmt.Errorf("CPU must be greater than 0")
+		}
+		if req.Memory <= 0 {
+			return fmt.Errorf("Memory must be greater than 0")
+		}
+		if req.Image == "" {
+			return fmt.Errorf("Image is required when creating new environment")
+		}
+	} else {
+		return fmt.Errorf("Invalid environment mode: %s", req.EnvironmentMode)
+	}
+	
+	// 数据集验证
+	if req.DPODataset == "" {
+		return fmt.Errorf("DPO dataset is required")
+	}
+	
+	return nil
+}
+
+// saveTrainingJobToDB saves training job to database
+func saveTrainingJobToDB(jobID string, req *TrainingJobRequest) error {
 	// Convert dependency files slice to JSON string for database storage
 	dependencyFilesJSON := "[]"
 	if len(req.DependencyFiles) > 0 {
@@ -97,7 +149,7 @@ func handleCreateTrainingJobHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	
-	// Convert to DB model for saving directly
+	// Convert to DB model
 	trainingJobDB := TrainingJobDB{
 		ID:              jobID,
 		Name:            req.JobName,
@@ -106,7 +158,14 @@ func handleCreateTrainingJobHandler(w http.ResponseWriter, r *http.Request) {
 		TrainingType:    req.TrainingType,
 		TrainingMethod:  req.TrainingMethod,
 		Status:          "pending",
+		
+		// 环境配置
+		EnvironmentMode: req.EnvironmentMode,
+		Namespace:       req.Namespace,
+		CreateNamespace: req.CreateNamespace,
 		EnvironmentID:   req.EnvironmentID,
+		
+		// 资源配置
 		CPU:             req.CPU,
 		Memory:          req.Memory,
 		GPU:             req.GPU,
@@ -114,196 +173,21 @@ func handleCreateTrainingJobHandler(w http.ResponseWriter, r *http.Request) {
 		EnableRDMA:      req.EnableRDMA,
 		DebugMode:       req.DebugMode,
 		OutputDirectory: req.OutputDirectory,
+		
+		// 数据集和脚本
 		DPODataset:     req.DPODataset,
 		StartupScript:   req.StartupScript,
 		DependencyFiles: dependencyFilesJSON,
+		
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
 
 	// Save to database using GORM
 	if err := GetDB().Create(&trainingJobDB).Error; err != nil {
-		log.Printf("Failed to save training job: %v", err)
-		http.Error(w, "Failed to save training job", http.StatusInternalServerError)
-		return
+		return fmt.Errorf("failed to save training job to database: %v", err)
 	}
 
-	// Create Kubernetes Job
-	if err := createKubernetesJob(jobID, &req); err != nil {
-		log.Printf("Failed to create Kubernetes job: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to create training job: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Training job created successfully: %s", jobID)
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"success": true,
-		"jobId":  jobID,
-		"message": "Training job created successfully",
-	})
-}
-
-// createKubernetesJob creates a Kubernetes Job for training
-func createKubernetesJob(jobID string, req *TrainingJobRequest) error {
-	if currentClientset == nil {
-		return fmt.Errorf("Kubernetes client not initialized")
-	}
-
-	// Generate output directory if not provided
-	outputDir := req.OutputDirectory
-	if outputDir == "" {
-		outputDir = fmt.Sprintf("/mnt/cfs/%s/checkpoint", jobID)
-	}
-
-	// Create resource requirements
-	resources := corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%d", req.CPU)),
-			corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dGi", req.Memory)),
-		},
-	}
-	if req.GPU > 0 {
-		resources.Requests[corev1.ResourceName("nvidia.com/gpu")] = resource.MustParse(fmt.Sprintf("%d", req.GPU))
-	}
-
-	// Create volume mounts
-	volumeMounts := []corev1.VolumeMount{
-		{
-			Name:      "cfs-storage",
-			MountPath: "/mnt/cfs",
-		},
-		{
-			Name:      "output-volume",
-			MountPath: "/output",
-		},
-	}
-
-	// Create volumes
-	volumes := []corev1.Volume{
-		{
-			Name: "cfs-storage",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: "rl-cfs-turbo-pv",
-				},
-			},
-		},
-		{
-			Name: "output-volume",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
-		},
-	}
-
-	// Create container with training script
-	container := corev1.Container{
-		Name:  "training-container",
-		Image: req.Image,
-		Command: []string{"/bin/sh", "-c"},
-		Args: []string{
-			fmt.Sprintf(`
-# Set up environment
-export JOB_ID=%s
-export BASE_MODEL=%s
-export TRAINING_TYPE=%s
-export TRAINING_METHOD=%s
-export DPO_DATASET=%s
-export OUTPUT_DIR=%s
-export ENABLE_RDMA=%t
-export DEBUG_MODE=%t
-
-# Create output directory
-mkdir -p $OUTPUT_DIR
-
-# Download DPO dataset if specified
-if [ "$DPO_DATASET" != "" ]; then
-    echo "Setting up DPO dataset: $DPO_DATASET"
-    # Dataset setup logic here
-fi
-
-# Run training
-echo "Starting training with base model: $BASE_MODEL"
-echo "Training method: $TRAINING_METHOD"
-echo "Output directory: $OUTPUT_DIR"
-
-# Placeholder for actual training command
-# python train.py --base-model $BASE_MODEL --method $TRAINING_METHOD --dataset $DPO_DATASET --output $OUTPUT_DIR
-
-echo "Training completed successfully"
-`, jobID, req.BaseModel, req.TrainingType, req.TrainingMethod, req.DPODataset, outputDir, req.EnableRDMA, req.DebugMode),
-		},
-		VolumeMounts: volumeMounts,
-		Resources:   resources,
-		Env: []corev1.EnvVar{
-			{Name: "JOB_ID", Value: jobID},
-			{Name: "BASE_MODEL", Value: req.BaseModel},
-			{Name: "TRAINING_TYPE", Value: req.TrainingType},
-			{Name: "TRAINING_METHOD", Value: req.TrainingMethod},
-			{Name: "DPO_DATASET", Value: req.DPODataset},
-			{Name: "OUTPUT_DIR", Value: outputDir},
-			{Name: "ENABLE_RDMA", Value: fmt.Sprintf("%t", req.EnableRDMA)},
-			{Name: "DEBUG_MODE", Value: fmt.Sprintf("%t", req.DebugMode)},
-		},
-	}
-
-	// Add RDMA support if enabled
-	if req.EnableRDMA {
-		container.SecurityContext = &corev1.SecurityContext{
-			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"IPC_LOCK"},
-			},
-		}
-	}
-
-	// Create job spec
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobID,
-			Namespace: "default",
-			Labels: map[string]string{
-				"app":          "training-job",
-				"job-id":       jobID,
-				"base-model":    req.BaseModel,
-				"training-type": req.TrainingType,
-				"training-method": req.TrainingMethod,
-			},
-		},
-		Spec: batchv1.JobSpec{
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app":          "training-job",
-						"job-id":       jobID,
-						"base-model":    req.BaseModel,
-						"training-type": req.TrainingType,
-						"training-method": req.TrainingMethod,
-					},
-				},
-				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers:   []corev1.Container{container},
-					Volumes:      volumes,
-					NodeSelector: map[string]string{
-						// Add GPU node selector if GPU is requested
-						"accelerator": "nvidia-tesla-v100",
-					},
-				},
-			},
-			BackoffLimit: int32Ptr(3),
-		},
-	}
-
-	// Create the job
-	_, err := currentClientset.BatchV1().Jobs("default").Create(context.Background(), job, metav1.CreateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to create training job: %w", err)
-	}
-
+	log.Printf("Training job saved to database successfully: %s", jobID)
 	return nil
-}
-
-// Helper function
-func int32Ptr(i int32) *int32 {
-	return &i
 }

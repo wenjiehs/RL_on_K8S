@@ -15,6 +15,7 @@ import {
   Switch,
 } from 'tdesign-react';
 import { AddIcon, UploadIcon, CloseIcon } from 'tdesign-icons-react';
+import { useNamespaces } from '../hooks/useNamespaces';
 
 const { FormItem } = Form;
 const { TabPanel } = Tabs;
@@ -40,8 +41,15 @@ interface BaseFormData {
   trainingType: string;
   trainingMethod: string;
   
-  // 环境信息
+  // 环境配置方式
+  environmentMode: 'select-existing' | 'create-new';
+  
+  // 选择已有环境
+  namespace: string;
   environmentId: string;
+  
+  // 自动创建环境参数
+  createNamespace: string;
   cpu: number;
   memory: number;
   gpu: number;
@@ -112,6 +120,9 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     training: {},
   });
   
+  // 使用命名空间Hook
+  const { namespaces: namespaceOptions, loading: namespacesLoading } = useNamespaces();
+  
   const [formData, setFormData] = useState<BaseFormData>({
     // 基础信息
     jobName: '',
@@ -120,8 +131,15 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
     trainingType: 'reinforcement_learning',
     trainingMethod: 'RLHF_DPO',
     
-    // 环境信息
+    // 环境配置方式
+    environmentMode: 'select-existing',
+    
+    // 选择已有环境
+    namespace: 'default',
     environmentId: '',
+    
+    // 自动创建环境参数
+    createNamespace: 'default',
     cpu: 4,
     memory: 16,
     gpu: 1,
@@ -135,10 +153,10 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
   });
 
   useEffect(() => {
-    if (visible) {
+    if (visible && formData.namespace) {
       fetchEnvironments();
     }
-  }, [visible]);
+  }, [visible, formData.namespace]);
 
   useEffect(() => {
     // 根据选择的DPO数据集自动设置数据路径
@@ -157,7 +175,11 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       case 'basic':
         return !!(formData.jobName && formData.baseModel && formData.trainingType && formData.trainingMethod);
       case 'environment':
-        return !!(formData.environmentId && formData.cpu && formData.memory && formData.image);
+        if (formData.environmentMode === 'select-existing') {
+          return !!(formData.namespace && formData.environmentId);
+        } else {
+          return !!(formData.createNamespace && formData.cpu && formData.memory && formData.image);
+        }
       case 'dataset':
         return !!formData.dpoDataset;
       case 'training':
@@ -251,7 +273,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
 
   const fetchEnvironments = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/environments');
+      const response = await fetch(`http://localhost:8080/api/environments?namespace=${formData.namespace}`);
       if (!response.ok) {
         throw new Error('Failed to fetch environments');
       }
@@ -262,7 +284,7 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       setEnvironments(runningEnvs);
       
       if (runningEnvs.length === 0) {
-        MessagePlugin.warning('当前没有运行中的环境，请先创建并启动环境');
+        MessagePlugin.warning('当前命名空间没有运行中的环境，请先创建并启动环境');
       }
     } catch (error) {
       console.error('Failed to fetch environments:', error);
@@ -304,7 +326,15 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
 
   const handleSubmit = async () => {
     // 验证所有必填字段
-    const allRequiredFields = ['jobName', 'baseModel', 'trainingType', 'trainingMethod', 'environmentId', 'dpoDataset'];
+    let allRequiredFields = ['jobName', 'baseModel', 'trainingType', 'trainingMethod', 'dpoDataset'];
+    
+    // 根据环境配置方式添加不同的必填字段
+    if (formData.environmentMode === 'select-existing') {
+      allRequiredFields.push('namespace', 'environmentId');
+    } else {
+      allRequiredFields.push('createNamespace', 'cpu', 'memory', 'image');
+    }
+    
     const missingFields = allRequiredFields.filter(field => !formData[field as keyof BaseFormData]);
     
     if (missingFields.length > 0) {
@@ -325,6 +355,8 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       const submitData = {
         ...formData,
         outputDirectory: outputDir,
+        // 根据环境模式设置正确的命名空间
+        namespace: formData.environmentMode === 'select-existing' ? formData.namespace : formData.createNamespace,
       };
 
       const response = await fetch('http://localhost:8080/api/training-jobs/create', {
@@ -359,7 +391,10 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
       baseModel: 'llama-7b',
       trainingType: 'reinforcement_learning',
       trainingMethod: 'RLHF_DPO',
+      environmentMode: 'select-existing',
+      namespace: 'default',
       environmentId: '',
+      createNamespace: 'default',
       cpu: 4,
       memory: 16,
       gpu: 1,
@@ -498,83 +533,202 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
               borderRadius: '6px',
               color: '#cf1322'
             }}>
-              ⚠️ 请完成必填项：训练环境、CPU核数、内存、镜像
+              ⚠️ 请完成环境配置：选择已有环境或设置自动创建环境参数
             </div>
           )}
+          
           <Form labelWidth={140} style={{ marginTop: 16 }}>
-            <FormItem label="训练环境" name="environmentId" requiredMark>
+            {/* 环境配置方式选择 */}
+            <FormItem label="环境配置方式" name="environmentMode" requiredMark>
               <Select
-                value={formData.environmentId}
-                onChange={(value) => setFormData({ ...formData, environmentId: value as string })}
-                options={environments.map((env) => ({
-                  label: `${env.name} (${env.framework})`,
-                  value: env.name,
-                }))}
-                placeholder={environments.length === 0 ? "暂无运行中的环境" : "选择运行中的环境"}
-                disabled={environments.length === 0}
+                value={formData.environmentMode}
+                onChange={(value) => {
+                  const modeValue = value as 'select-existing' | 'create-new';
+                  setFormData({ ...formData, environmentMode: modeValue });
+                  // 切换模式时清空相关字段
+                  if (modeValue === 'select-existing') {
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      environmentMode: 'select-existing',
+                      environmentId: '',
+                      createNamespace: 'default'
+                    }));
+                  } else {
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      environmentMode: 'create-new',
+                      namespace: '',
+                      environmentId: ''
+                    }));
+                  }
+                }}
+                options={[
+                  { label: '选择已有环境', value: 'select-existing', description: '从现有运行中的Ray环境选择' },
+                  { label: '自动创建环境', value: 'create-new', description: '根据配置自动创建新的Ray环境' }
+                ]}
+                placeholder="选择环境配置方式"
               />
             </FormItem>
 
-            <FormItem label="CPU核数" name="cpu">
-              <InputNumber
-                value={formData.cpu}
-                onChange={(value) => setFormData({ ...formData, cpu: Number(value) || 4 })}
-                min={1}
-                max={64}
-                step={1}
-              />
-            </FormItem>
+            {/* 选择已有环境配置 */}
+            {formData.environmentMode === 'select-existing' && (
+              <div style={{ 
+                padding: '16px', 
+                marginBottom: '16px', 
+                backgroundColor: '#f0f9ff', 
+                border: '1px solid #bae6fd', 
+                borderRadius: '8px',
+                borderLeft: '4px solid #0ea5e9'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '12px', color: '#0369a1' }}>
+                  🎯 选择已有环境
+                </div>
+                <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+                  从现有运行中的Ray环境选择，系统将使用该环境执行训练任务。
+                </div>
+                
+                <FormItem label="命名空间" name="namespace" requiredMark>
+                  <Select
+                    value={formData.namespace}
+                    onChange={(value) => {
+                      setFormData({ ...formData, namespace: value as string, environmentId: '' });
+                    }}
+                    options={namespaceOptions}
+                    placeholder="选择命名空间"
+                    loading={namespacesLoading}
+                    filterable
+                  />
+                </FormItem>
 
-            <FormItem label="内存(GB)" name="memory">
-              <InputNumber
-                value={formData.memory}
-                onChange={(value) => setFormData({ ...formData, memory: Number(value) || 16 })}
-                min={1}
-                max={256}
-                step={1}
-              />
-            </FormItem>
+                <FormItem label="训练环境" name="environmentId" requiredMark>
+                  <Select
+                    value={formData.environmentId}
+                    onChange={(value) => setFormData({ ...formData, environmentId: value as string })}
+                    options={environments.map((env) => ({
+                      label: `${env.name} (${env.framework})`,
+                      value: env.name,
+                    }))}
+                    placeholder={environments.length === 0 ? "暂无运行中的环境" : "选择运行中的环境"}
+                    disabled={environments.length === 0}
+                  />
+                </FormItem>
+              </div>
+            )}
 
-            <FormItem label="GPU数量" name="gpu">
-              <InputNumber
-                value={formData.gpu}
-                onChange={(value) => setFormData({ ...formData, gpu: Number(value) || 1 })}
-                min={0}
-                max={8}
-                step={1}
-              />
-            </FormItem>
+            {/* 自动创建环境配置 */}
+            {formData.environmentMode === 'create-new' && (
+              <div style={{ 
+                padding: '16px', 
+                marginBottom: '16px', 
+                backgroundColor: '#f0fdf4', 
+                border: '1px solid #bbf7d0', 
+                borderRadius: '8px',
+                borderLeft: '4px solid #22c55e'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '12px', color: '#15803d' }}>
+                  ⚙️ 自动创建环境
+                </div>
+                <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+                  系统将根据以下配置自动创建新的Ray环境并执行训练任务。
+                </div>
 
-            <FormItem label="镜像" name="image">
-              <Select
-                value={formData.image}
-                onChange={(value) => handleImageChange(value as string)}
-                options={imageOptions}
-                placeholder="选择训练镜像"
-              />
-            </FormItem>
+                <FormItem label="命名空间" name="createNamespace" requiredMark>
+                  <Select
+                    value={formData.createNamespace}
+                    onChange={(value) => setFormData({ ...formData, createNamespace: value as string })}
+                    options={namespaceOptions}
+                    placeholder="选择命名空间"
+                    loading={namespacesLoading}
+                    filterable
+                  />
+                </FormItem>
 
-            <FormItem label="启动RDMA" name="enableRDMA">
-              <Switch
-                value={formData.enableRDMA}
-                onChange={(value) => setFormData({ ...formData, enableRDMA: value })}
-              />
-            </FormItem>
+                <FormItem label="CPU配置" name="cpu" requiredMark>
+                  <InputNumber
+                    value={formData.cpu}
+                    onChange={(value) => setFormData({ ...formData, cpu: Number(value) || 4 })}
+                    min={1}
+                    max={64}
+                    step={1}
+                    placeholder="CPU核数"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    建议至少4核，复杂训练任务建议8核以上
+                  </div>
+                </FormItem>
 
-            <FormItem label="Debug模式" name="debugMode">
-              <Switch
-                value={formData.debugMode}
-                onChange={(value) => setFormData({ ...formData, debugMode: value })}
-              />
-            </FormItem>
+                <FormItem label="内存大小" name="memory" requiredMark>
+                  <InputNumber
+                    value={formData.memory}
+                    onChange={(value) => setFormData({ ...formData, memory: Number(value) || 16 })}
+                    min={1}
+                    max={256}
+                    step={1}
+                    placeholder="内存大小(GB)"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    建议至少16GB，大模型训练建议32GB以上
+                  </div>
+                </FormItem>
 
-            <FormItem label="产出目录" name="outputDirectory">
-              <Input
-                placeholder="/mnt/cfs/[jobid]/checkpoint"
-                value={formData.outputDirectory}
-                readonly
-              />
-            </FormItem>
+                <FormItem label="GPU资源" name="gpu">
+                  <InputNumber
+                    value={formData.gpu}
+                    onChange={(value) => setFormData({ ...formData, gpu: Number(value) || 1 })}
+                    min={0}
+                    max={8}
+                    step={1}
+                    placeholder="GPU数量"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    GPU训练可显著提升性能，建议1-4张GPU
+                  </div>
+                </FormItem>
+
+                <FormItem label="镜像选择" name="image" requiredMark>
+                  <Select
+                    value={formData.image}
+                    onChange={(value) => handleImageChange(value as string)}
+                    options={imageOptions}
+                    placeholder="选择训练镜像"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    选择包含Ray和深度学习框架的镜像
+                  </div>
+                </FormItem>
+
+                <FormItem label="RDMA设置" name="enableRDMA">
+                  <Switch
+                    value={formData.enableRDMA}
+                    onChange={(value) => setFormData({ ...formData, enableRDMA: value })}
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    启用RDMA可提升多节点通信性能，适用于分布式训练
+                  </div>
+                </FormItem>
+
+                <FormItem label="Debug模式" name="debugMode">
+                  <Switch
+                    value={formData.debugMode}
+                    onChange={(value) => setFormData({ ...formData, debugMode: value })}
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    启用Debug模式将保留训练容器，便于问题排查
+                  </div>
+                </FormItem>
+
+                <FormItem label="产出目录" name="outputDirectory">
+                  <Input
+                    value={formData.outputDirectory}
+                    onChange={(value) => setFormData({ ...formData, outputDirectory: value })}
+                    placeholder="/mnt/cfs/{job-id}/checkpoint"
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    训练结果和模型检查点的保存路径
+                  </div>
+                </FormItem>
+              </div>
+            )}
           </Form>
         </TabPanel>
 

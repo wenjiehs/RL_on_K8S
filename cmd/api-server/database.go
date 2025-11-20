@@ -42,7 +42,14 @@ type TrainingJobDB struct {
 	TrainingType    string    `gorm:"column:training_type"`
 	TrainingMethod  string    `gorm:"column:training_method"`
 	Status          string    `gorm:"column:status"`
+	
+	// 环境配置
+	EnvironmentMode string    `gorm:"column:environment_mode"` // select-existing | create-new
+	Namespace       string    `gorm:"column:namespace"`        // 选择已有环境时的命名空间
+	CreateNamespace string    `gorm:"column:create_namespace"` // 自动创建环境时的命名空间
 	EnvironmentID   string    `gorm:"column:environment_id"`
+	
+	// 资源配置
 	CPU             int       `gorm:"column:cpu"`
 	Memory          int       `gorm:"column:memory"`
 	GPU             int       `gorm:"column:gpu"`
@@ -50,9 +57,12 @@ type TrainingJobDB struct {
 	EnableRDMA      bool      `gorm:"column:enable_rdma"`
 	DebugMode       bool      `gorm:"column:debug_mode"`
 	OutputDirectory string    `gorm:"column:output_directory"`
+	
+	// 数据集和脚本
 	DPODataset     string    `gorm:"column:dpo_dataset"`
 	StartupScript   string    `gorm:"column:startup_script"`
 	DependencyFiles string    `gorm:"column:dependency_files"`
+	
 	CreatedAt       time.Time `gorm:"column:created_at"`
 	UpdatedAt       time.Time `gorm:"column:updated_at"`
 }
