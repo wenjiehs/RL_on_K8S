@@ -52,4 +52,5 @@ kubectl-ianvs
 .env.*.local
 
 # CodeBuddy
-.codebuddy/
+.codebuddy/# Database files
+training.db
