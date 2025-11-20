@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,9 @@ type Environment struct {
 	Framework   string            `json:"framework"` // ray, horovod, deepspeed, custom
 	Image       string            `json:"image"`
 	Replicas    int32             `json:"replicas"`
+	CPU         int32             `json:"cpu"`
+	Memory      int32             `json:"memory"`
+	GPU         int32             `json:"gpu"`
 	Status      string            `json:"status"` // pending, running, stopped, error
 	Namespace   string            `json:"namespace"`
 	Labels      map[string]string `json:"labels,omitempty" gorm:"type:text;serializer:json"`
@@ -210,12 +214,32 @@ func handleListEnvironments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, dep := range deployments.Items {
+		// Extract resources from deployment
+		var cpu, memory, gpu int32 = 4, 16, 1 // defaults
+		
+		if len(dep.Spec.Template.Spec.Containers) > 0 {
+			container := dep.Spec.Template.Spec.Containers[0]
+			if container.Resources.Requests != nil {
+				if cpuVal := container.Resources.Requests.Cpu(); cpuVal != nil {
+					cpu = int32(cpuVal.Value())
+				}
+				if memVal := container.Resources.Requests.Memory(); memVal != nil {
+					// Convert bytes to GB (approximately)
+					memory = int32(memVal.Value() / (1024 * 1024 * 1024))
+				}
+				// Skip GPU for deployments as they are not Ray clusters
+			}
+		}
+		
 		env := Environment{
 			ID:          string(dep.UID),
 			Name:        dep.Name,
 			Framework:   dep.Labels["rl-framework"],
 			Image:       getImageFromDeployment(&dep),
 			Replicas:    *dep.Spec.Replicas,
+			CPU:         cpu,
+			Memory:      memory,
+			GPU:         gpu,
 			Status:      getDeploymentStatus(&dep),
 			Namespace:   dep.Namespace,
 			Labels:      dep.Labels,
@@ -622,12 +646,64 @@ func convertRayClusterToEnvironment(rayCluster *unstructured.Unstructured) Envir
 		}
 	}
 	
-	// Extract worker replicas
+	// Extract worker replicas and resources
 	var replicas int32 = 0
+	var cpu int32 = 4
+	var memory int32 = 16
+	var gpu int32 = 1
+	
 	if workerGroupSpecs, ok := spec["workerGroupSpecs"].([]interface{}); ok && len(workerGroupSpecs) > 0 {
 		if workerGroup, ok := workerGroupSpecs[0].(map[string]interface{}); ok {
 			if r, ok := workerGroup["replicas"].(int64); ok {
 				replicas = int32(r)
+			}
+			
+			// Extract resources from worker group template
+			if template, ok := workerGroup["template"].(map[string]interface{}); ok {
+				if podSpec, ok := template["spec"].(map[string]interface{}); ok {
+					// Extract CPU and Memory from resources
+					if containers, ok := podSpec["containers"].([]interface{}); ok && len(containers) > 0 {
+						if container, ok := containers[0].(map[string]interface{}); ok {
+							if containerResources, ok := container["resources"].(map[string]interface{}); ok {
+								// Check limits first, then requests
+								var resourcesToCheck map[string]interface{}
+								if limits, ok := containerResources["limits"].(map[string]interface{}); ok {
+									resourcesToCheck = limits
+								} else if requests, ok := containerResources["requests"].(map[string]interface{}); ok {
+									resourcesToCheck = requests
+								}
+								
+								if cpuVal, ok := resourcesToCheck["cpu"]; ok {
+									if cpuStr, ok := cpuVal.(string); ok {
+										if parsedCPU, err := parseCPU(cpuStr); err == nil {
+											cpu = parsedCPU
+										}
+									}
+								}
+								if memVal, ok := resourcesToCheck["memory"]; ok {
+									if memStr, ok := memVal.(string); ok {
+										if parsedMem, err := parseMemory(memStr); err == nil {
+											memory = parsedMem
+										}
+									}
+								}
+								if gpuVal, ok := resourcesToCheck["nvidia.com/gpu"]; ok {
+									// Handle different GPU value types
+									switch v := gpuVal.(type) {
+									case string:
+										if parsedGPU, err := parseGPU(v); err == nil {
+											gpu = parsedGPU
+										}
+									case int64:
+										gpu = int32(v)
+									case float64:
+										gpu = int32(v)
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -669,12 +745,61 @@ func convertRayClusterToEnvironment(rayCluster *unstructured.Unstructured) Envir
 		Framework: "ray",
 		Image:     image,
 		Replicas:  replicas,
+		CPU:       cpu,
+		Memory:    memory,
+		GPU:       gpu,
 		Status:    envStatus,
 		Namespace: namespace,
 		Labels:    labelMap,
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,
 	}
+}
+
+// parseCPU parses CPU string like "4" or "4000m" to int32
+func parseCPU(cpuStr string) (int32, error) {
+	if strings.HasSuffix(cpuStr, "m") {
+		// Millicores
+		millis := strings.TrimSuffix(cpuStr, "m")
+		if millis, err := strconv.Atoi(millis); err == nil {
+			return int32(millis / 1000), nil
+		}
+	} else {
+		// Cores
+		if cores, err := strconv.Atoi(cpuStr); err == nil {
+			return int32(cores), nil
+		}
+	}
+	return 0, fmt.Errorf("invalid CPU format: %s", cpuStr)
+}
+
+// parseMemory parses memory string like "16Gi" to int32 (in GB)
+func parseMemory(memStr string) (int32, error) {
+	if strings.HasSuffix(memStr, "Gi") {
+		gi := strings.TrimSuffix(memStr, "Gi")
+		if gb, err := strconv.Atoi(gi); err == nil {
+			return int32(gb), nil
+		}
+	} else if strings.HasSuffix(memStr, "G") {
+		g := strings.TrimSuffix(memStr, "G")
+		if gb, err := strconv.Atoi(g); err == nil {
+			return int32(gb), nil
+		}
+	} else if strings.HasSuffix(memStr, "Mi") {
+		mi := strings.TrimSuffix(memStr, "Mi")
+		if mb, err := strconv.Atoi(mi); err == nil {
+			return int32(mb / 1024), nil
+		}
+	}
+	return 0, fmt.Errorf("invalid memory format: %s", memStr)
+}
+
+// parseGPU parses GPU string to int32
+func parseGPU(gpuStr string) (int32, error) {
+	if gpu, err := strconv.Atoi(gpuStr); err == nil {
+		return int32(gpu), nil
+	}
+	return 0, fmt.Errorf("invalid GPU format: %s", gpuStr)
 }
 
 // handleGetEnvironmentDetail gets detailed information about an environment

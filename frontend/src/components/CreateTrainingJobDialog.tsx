@@ -32,6 +32,9 @@ interface Environment {
   name: string;
   framework: string;
   status: string;
+  cpu: number;
+  memory: number;
+  gpu: number;
 }
 
 interface BaseFormData {
@@ -710,9 +713,24 @@ const CreateTrainingJobDialog: React.FC<CreateTrainingJobDialogProps> = ({
                 <FormItem label="训练环境" name="environmentId" requiredMark>
                   <Select
                     value={formData.environmentId}
-                    onChange={(value) => setFormData({ ...formData, environmentId: value as string })}
+                    onChange={(value) => {
+                      const selectedEnv = environments.find(env => env.name === value);
+                      if (selectedEnv) {
+                        // 当选择已有环境时，自动设置该环境的资源配置
+                        setFormData({ 
+                          ...formData, 
+                          environmentId: value as string,
+                          gpu: selectedEnv.gpu || 1,
+                          cpu: selectedEnv.cpu || 4,
+                          memory: selectedEnv.memory || 16,
+                          image: selectedEnv.image || formData.image
+                        });
+                      } else {
+                        setFormData({ ...formData, environmentId: value as string });
+                      }
+                    }}
                     options={environments.map((env) => ({
-                      label: `${env.name} (${env.framework})`,
+                      label: `${env.name} (${env.framework}) - ${env.gpu || 0}卡`,
                       value: env.name,
                     }))}
                     placeholder={environments.length === 0 ? "暂无运行中的环境" : "选择运行中的环境"}
