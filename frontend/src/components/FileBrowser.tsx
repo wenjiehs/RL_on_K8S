@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Table, Button, Space, MessagePlugin, Drawer, Tag, Radio, Input } from 'tdesign-react';
-import { FolderIcon, FileIcon, DownloadIcon, DeleteIcon, SearchIcon, ViewListIcon, ViewModuleIcon } from 'tdesign-icons-react';
+import { Card, Row, Col, Table, Button, Space, MessagePlugin, Drawer, Tag, Radio, Input, Breadcrumb, DialogPlugin, Divider } from 'tdesign-react';
+import { 
+  FolderIcon, 
+  FileIcon, 
+  DownloadIcon, 
+  DeleteIcon, 
+  SearchIcon, 
+  ViewListIcon, 
+  ViewModuleIcon,
+  ChevronRightIcon,
+  HomeIcon,
+  RefreshIcon,
+  FileAddIcon,
+  ChevronUpIcon
+} from 'tdesign-icons-react';
 
 interface FileEntry {
   name: string;
@@ -9,14 +22,6 @@ interface FileEntry {
   size: number;
   modTime: string;
   extension: string;
-}
-
-interface TreeNode {
-  name: string;
-  path: string;
-  isDir: boolean;
-  children?: TreeNode[];
-  level: number;
 }
 
 interface FileBrowserProps {
@@ -28,13 +33,26 @@ interface FileBrowserProps {
 const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datasetName }) => {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currentPath, setCurrentPath] = useState('/cfs/rl-data');
-  const [pathHistory, setPathHistory] = useState<string[]>(['/cfs/rl-data']);
+  const initialPath = datasetPath || '/cfs/rl-data';
+  const [currentPath, setCurrentPath] = useState(initialPath);
+  const [pathHistory, setPathHistory] = useState<string[]>([initialPath]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchText, setSearchText] = useState('');
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [previewContent, setPreviewContent] = useState<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 检测移动设备
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const fetchFiles = useCallback(async (path: string) => {
     setLoading(true);
@@ -63,6 +81,8 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
 
   useEffect(() => {
     const initialPath = datasetPath || '/cfs/rl-data';
+    setCurrentPath(initialPath);
+    setPathHistory([initialPath]);
     fetchFiles(initialPath);
   }, [datasetPath]);
 
@@ -72,7 +92,11 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
 
   const navigateUp = () => {
     const parts = currentPath.split('/').filter(p => p);
-    if (parts.length > 3) { // Keep at least /cfs/rl-data
+    const basePath = datasetPath || '/cfs/rl-data';
+    const basePathParts = basePath.split('/').filter(p => p);
+    
+    // 只有当当前路径比基础路径深时才能向上导航
+    if (parts.length > basePathParts.length) {
       parts.pop();
       const parentPath = '/' + parts.join('/');
       fetchFiles(parentPath);
@@ -81,7 +105,11 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
 
   const handleDownload = async (file: FileEntry) => {
     try {
+      MessagePlugin.loading('Downloading...', 0);
       const response = await fetch(`http://localhost:8080/api/datasets/download?path=${encodeURIComponent(file.path)}`);
+      
+      MessagePlugin.close();
+      
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -97,41 +125,65 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
         MessagePlugin.error('Failed to download file');
       }
     } catch (error) {
+      MessagePlugin.close();
       MessagePlugin.error('Network error: ' + (error as Error).message);
     }
   };
 
   const handleDelete = async (file: FileEntry) => {
-    try {
-      const response = await fetch(
-        `http://localhost:8080/api/datasets/file/delete?path=${encodeURIComponent(file.path)}`,
-        { method: 'DELETE' }
-      );
+    const dialog = DialogPlugin.confirm({
+      header: 'Delete File',
+      body: `Are you sure you want to delete "${file.name}"? This action cannot be undone.`,
+      theme: 'warning',
+      confirmBtn: 'Delete',
+      cancelBtn: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(
+            `http://localhost:8080/api/datasets/file/delete?path=${encodeURIComponent(file.path)}`,
+            { method: 'DELETE' }
+          );
 
-      if (response.ok) {
-        MessagePlugin.success('File deleted successfully');
-        fetchFiles(currentPath);
-      } else {
-        const error = await response.json();
-        MessagePlugin.error(error.error || 'Failed to delete file');
+          if (response.ok) {
+            MessagePlugin.success('File deleted successfully');
+            fetchFiles(currentPath);
+          } else {
+            const error = await response.json();
+            MessagePlugin.error(error.error || 'Failed to delete file');
+          }
+        } catch (error) {
+          MessagePlugin.error('Network error: ' + (error as Error).message);
+        }
+        dialog.hide();
+      },
+      onCancel: () => {
+        dialog.hide();
       }
-    } catch (error) {
-      MessagePlugin.error('Network error: ' + (error as Error).message);
-    }
+    });
   };
 
   const handlePreview = async (file: FileEntry) => {
     setPreviewFile(file);
     setPreviewVisible(true);
+    setPreviewContent({ loading: true });
 
     try {
       const response = await fetch(`http://localhost:8080/api/datasets/preview?path=${encodeURIComponent(file.path)}`);
       if (response.ok) {
         const data = await response.json();
         setPreviewContent(data);
+      } else {
+        setPreviewContent({ 
+          type: 'error', 
+          message: 'Failed to load preview' 
+        });
       }
     } catch (error) {
       console.error('Failed to preview file:', error);
+      setPreviewContent({ 
+        type: 'error', 
+        message: 'Network error: ' + (error as Error).message 
+      });
     }
   };
 
@@ -143,39 +195,100 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const getFileIcon = (file: FileEntry) => {
-    if (file.isDir) return <FolderIcon style={{ color: '#E37318' }} />;
+  const getFileIcon = (file: FileEntry, size: string = '20px') => {
+    if (file.isDir) {
+      return <FolderIcon size={size} style={{ color: '#FFA940' }} />;
+    }
     
     const ext = file.extension.toLowerCase();
-    const iconColors: Record<string, string> = {
-      '.parquet': '#0052D9',
-      '.csv': '#00A870',
-      '.json': '#834EC2',
-      '.txt': '#666',
-      '.py': '#0052D9',
-      '.sh': '#00A870',
+    const iconConfig: Record<string, { color: string }> = {
+      '.parquet': { color: '#0052D9' },
+      '.csv': { color: '#00A870' },
+      '.json': { color: '#834EC2' },
+      '.txt': { color: '#666666' },
+      '.py': { color: '#0052D9' },
+      '.sh': { color: '#00A870' },
+      '.md': { color: '#0052D9' },
+      '.yaml': { color: '#834EC2' },
+      '.yml': { color: '#834EC2' },
+      '.log': { color: '#E37318' },
+      '.png': { color: '#52C41A' },
+      '.jpg': { color: '#52C41A' },
+      '.jpeg': { color: '#52C41A' },
+      '.gif': { color: '#52C41A' },
     };
 
-    return <FileIcon style={{ color: iconColors[ext] || '#999' }} />;
+    const config = iconConfig[ext] || { color: '#999999' };
+    return <FileIcon size={size} style={{ color: config.color }} />;
+  };
+
+  const getFileTypeTag = (file: FileEntry) => {
+    if (file.isDir) return <Tag theme="warning" variant="light">Folder</Tag>;
+    
+    const ext = file.extension.toLowerCase();
+    const typeMap: Record<string, { label: string; theme: string }> = {
+      '.parquet': { label: 'Parquet', theme: 'primary' },
+      '.csv': { label: 'CSV', theme: 'success' },
+      '.json': { label: 'JSON', theme: 'purple' },
+      '.txt': { label: 'Text', theme: 'default' },
+      '.py': { label: 'Python', theme: 'primary' },
+      '.sh': { label: 'Shell', theme: 'success' },
+      '.md': { label: 'Markdown', theme: 'primary' },
+      '.yaml': { label: 'YAML', theme: 'purple' },
+      '.yml': { label: 'YAML', theme: 'purple' },
+      '.log': { label: 'Log', theme: 'warning' },
+    };
+
+    const type = typeMap[ext] || { label: ext.substring(1).toUpperCase() || 'File', theme: 'default' };
+    return <Tag theme={type.theme as any} variant="light" size="small">{type.label}</Tag>;
+  };
+
+  // 生成面包屑路径
+  const getBreadcrumbItems = () => {
+    const parts = currentPath.split('/').filter(p => p);
+    const items = [
+      {
+        content: <><HomeIcon style={{ marginRight: '4px' }} />Root</>,
+        onClick: () => navigateToPath(datasetPath || '/cfs/rl-data')
+      }
+    ];
+
+    let accPath = '';
+    parts.forEach((part, index) => {
+      accPath += '/' + part;
+      const fullPath = accPath;
+      
+      // 跳过基础路径之前的部分
+      const baseParts = (datasetPath || '/cfs/rl-data').split('/').filter(p => p);
+      if (index < baseParts.length - 1) return;
+      
+      items.push({
+        content: part,
+        onClick: () => navigateToPath(fullPath)
+      });
+    });
+
+    return items;
   };
 
   const filteredFiles = files.filter(file => 
     file.name.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  const columns = [
+  // 桌面端表格列配置
+  const desktopColumns = [
     {
       colKey: 'name',
       title: 'Name',
-      width: 300,
+      width: 350,
       cell: ({ row }: { row: FileEntry }) => (
-        <Space align="center">
+        <Space align="center" style={{ cursor: row.isDir ? 'pointer' : 'default' }}>
           {getFileIcon(row)}
           <span 
             style={{ 
               fontWeight: row.isDir ? '500' : 'normal',
-              cursor: row.isDir ? 'pointer' : 'default',
-              color: row.isDir ? 'var(--tc-brand-color)' : 'inherit'
+              color: row.isDir ? 'var(--tc-brand-color)' : 'inherit',
+              fontSize: '14px'
             }}
             onClick={() => row.isDir && fetchFiles(row.path)}
           >
@@ -185,19 +298,19 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
       ),
     },
     {
+      colKey: 'type',
+      title: 'Type',
+      width: 120,
+      cell: ({ row }: { row: FileEntry }) => getFileTypeTag(row),
+    },
+    {
       colKey: 'size',
       title: 'Size',
       width: 100,
       cell: ({ row }: { row: FileEntry }) => (
-        <span>{row.isDir ? '-' : formatBytes(row.size)}</span>
-      ),
-    },
-    {
-      colKey: 'extension',
-      title: 'Type',
-      width: 100,
-      cell: ({ row }: { row: FileEntry }) => (
-        <span>{row.isDir ? 'Folder' : (row.extension || '-')}</span>
+        <span style={{ color: 'var(--tc-text-secondary)', fontSize: '13px' }}>
+          {row.isDir ? '-' : formatBytes(row.size)}
+        </span>
       ),
     },
     {
@@ -205,21 +318,29 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
       title: 'Modified',
       width: 180,
       cell: ({ row }: { row: FileEntry }) => (
-        <span>{new Date(row.modTime).toLocaleString()}</span>
+        <span style={{ color: 'var(--tc-text-secondary)', fontSize: '13px' }}>
+          {new Date(row.modTime).toLocaleString()}
+        </span>
       ),
     },
     {
       colKey: 'actions',
       title: 'Actions',
       width: 200,
+      fixed: 'right' as const,
       cell: ({ row }: { row: FileEntry }) => (
         !row.isDir && (
           <Space size="small">
-            <Button theme="primary" variant="text" size="small" onClick={() => handlePreview(row)}>
+            <Button 
+              theme="primary" 
+              variant="text" 
+              size="small" 
+              onClick={() => handlePreview(row)}
+            >
               Preview
             </Button>
             <Button 
-              theme="primary" 
+              theme="default" 
               variant="text" 
               size="small" 
               icon={<DownloadIcon />}
@@ -242,136 +363,367 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
     },
   ];
 
+  // 移动端表格列配置（简化）
+  const mobileColumns = [
+    {
+      colKey: 'name',
+      title: 'Name',
+      cell: ({ row }: { row: FileEntry }) => (
+        <div onClick={() => row.isDir && fetchFiles(row.path)}>
+          <Space align="center" style={{ marginBottom: '4px' }}>
+            {getFileIcon(row)}
+            <span style={{ 
+              fontWeight: row.isDir ? '500' : 'normal',
+              fontSize: '14px'
+            }}>
+              {row.name}
+            </span>
+          </Space>
+          <Space size="small" style={{ marginTop: '4px' }}>
+            {getFileTypeTag(row)}
+            {!row.isDir && (
+              <span style={{ fontSize: '12px', color: 'var(--tc-text-placeholder)' }}>
+                {formatBytes(row.size)}
+              </span>
+            )}
+          </Space>
+        </div>
+      ),
+    },
+    {
+      colKey: 'actions',
+      title: '',
+      width: 80,
+      cell: ({ row }: { row: FileEntry }) => (
+        !row.isDir && (
+          <Space direction="vertical" size="small">
+            <Button 
+              block
+              size="small" 
+              icon={<DownloadIcon />}
+              onClick={() => handleDownload(row)}
+            />
+            <Button 
+              block
+              theme="danger" 
+              size="small" 
+              icon={<DeleteIcon />}
+              onClick={() => handleDelete(row)}
+            />
+          </Space>
+        )
+      ),
+    },
+  ];
+
   const renderGridView = () => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '16px', padding: '16px' }}>
+    <div 
+      style={{ 
+        display: 'grid', 
+        gridTemplateColumns: isMobile 
+          ? 'repeat(auto-fill, minmax(120px, 1fr))' 
+          : 'repeat(auto-fill, minmax(160px, 1fr))', 
+        gap: isMobile ? '12px' : '16px', 
+        padding: isMobile ? '12px' : '16px' 
+      }}
+    >
       {filteredFiles.map((file, index) => (
-        <div
+        <Card
           key={index}
-          style={{ cursor: file.isDir ? 'pointer' : 'default' }}
+          bordered
+          hoverable
+          style={{ 
+            cursor: file.isDir ? 'pointer' : 'default',
+            textAlign: 'center',
+            transition: 'all 0.3s ease',
+            height: '100%',
+          }}
           onClick={() => file.isDir && fetchFiles(file.path)}
         >
-          <Card bordered style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '8px' }}>
-            {getFileIcon(file)}
+          <div style={{ 
+            fontSize: isMobile ? '40px' : '48px', 
+            marginBottom: isMobile ? '6px' : '8px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: isMobile ? '60px' : '70px'
+          }}>
+            {getFileIcon(file, isMobile ? '40px' : '48px')}
           </div>
           <div style={{ 
-            fontSize: '14px', 
+            fontSize: isMobile ? '12px' : '14px', 
             fontWeight: '500',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            marginBottom: '4px'
+            marginBottom: '6px',
+            padding: '0 4px',
+            color: file.isDir ? 'var(--tc-brand-color)' : 'inherit'
           }}>
             {file.name}
           </div>
           {!file.isDir && (
-            <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)' }}>
-              {formatBytes(file.size)}
-            </div>
+            <>
+              <div style={{ fontSize: '11px', color: 'var(--tc-text-secondary)', marginBottom: '4px' }}>
+                {formatBytes(file.size)}
+              </div>
+              {!isMobile && (
+                <Space size="small" style={{ marginTop: '8px' }}>
+                  <Button 
+                    size="small" 
+                    variant="outline"
+                    icon={<DownloadIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownload(file);
+                    }}
+                  />
+                  <Button 
+                    size="small" 
+                    theme="danger"
+                    variant="outline"
+                    icon={<DeleteIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(file);
+                    }}
+                  />
+                </Space>
+              )}
+            </>
           )}
-          </Card>
-        </div>
+        </Card>
       ))}
     </div>
   );
 
   return (
-    <>
-      <Row gutter={16}>
-        {/* Left: Quick Navigation */}
-        <Col span={6}>
-          <Card title="Quick Navigation" bordered={false} style={{ height: '600px', overflow: 'auto' }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button 
-                block 
-                variant="outline"
-                onClick={() => navigateToPath('/cfs/rl-data')}
-                icon={<FolderIcon />}
-              >
-                Root Directory
-              </Button>
-              
-              <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--tc-text-secondary)' }}>
-                Recent Paths
-              </div>
-              {pathHistory.slice(-5).reverse().map((path, index) => (
-                <Button
-                  key={index}
-                  block
-                  variant="text"
-                  onClick={() => navigateToPath(path)}
-                  style={{ 
-                    justifyContent: 'flex-start',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {path}
-                </Button>
-              ))}
-            </Space>
-          </Card>
-        </Col>
-
-        {/* Right: File List */}
-        <Col span={18}>
-          <Card bordered={false}>
-            {/* Toolbar */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <Space>
-                  <Button 
-                    size="small" 
-                    onClick={navigateUp}
-                    disabled={currentPath === '/cfs/rl-data'}
-                  >
-                    ← Up
-                  </Button>
-                  <Tag theme="primary" variant="light">
-                    {currentPath}
-                  </Tag>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Row gutter={16} style={{ flex: 1, overflow: 'hidden' }}>
+        {/* 左侧导航 - 仅桌面端显示 */}
+        {!isMobile && (
+          <Col span={5}>
+            <Card 
+              title={
+                <Space align="center">
+                  <FolderIcon />
+                  <span>Navigation</span>
                 </Space>
-                <Radio.Group value={viewMode} onChange={(value) => setViewMode(value as 'list' | 'grid')}>
+              }
+              bordered={false} 
+              style={{ 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <div style={{ 
+                flex: 1, 
+                overflowY: 'auto',
+                overflowX: 'hidden'
+              }}>
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Button 
+                    block 
+                    variant="outline"
+                    onClick={() => navigateToPath(datasetPath || '/cfs/rl-data')}
+                    icon={<HomeIcon />}
+                    style={{ justifyContent: 'flex-start' }}
+                  >
+                    Home
+                  </Button>
+                  
+                  {datasetName && (
+                    <div style={{ 
+                      padding: '8px 12px', 
+                      backgroundColor: 'var(--tc-brand-color-light-1)',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      color: 'var(--tc-brand-color)',
+                      fontWeight: '500',
+                      marginTop: '8px'
+                    }}>
+                      📁 {datasetName}
+                    </div>
+                  )}
+                  
+                  <Divider style={{ margin: '12px 0' }} />
+                  
+                  <div style={{ fontSize: '12px', color: 'var(--tc-text-secondary)', padding: '0 4px' }}>
+                    Recent Paths
+                  </div>
+                  {pathHistory.slice(-8).reverse().map((path, index) => (
+                    <Button
+                      key={index}
+                      block
+                      variant={path === currentPath ? 'base' : 'text'}
+                      theme={path === currentPath ? 'primary' : 'default'}
+                      onClick={() => navigateToPath(path)}
+                      style={{ 
+                        justifyContent: 'flex-start',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: '13px'
+                      }}
+                      icon={<ChevronRightIcon size="14px" />}
+                      title={path}
+                    >
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis',
+                        display: 'block'
+                      }}>
+                        {path.split('/').pop() || 'root'}
+                      </span>
+                    </Button>
+                  ))}
+                </Space>
+              </div>
+            </Card>
+          </Col>
+        )}
+
+        {/* 右侧文件列表 */}
+        <Col span={isMobile ? 12 : 7}>
+          <Card 
+            bordered={false} 
+            style={{ 
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {/* 工具栏 */}
+            <div style={{ marginBottom: '16px' }}>
+              {/* 面包屑导航 */}
+              <div style={{ 
+                marginBottom: '12px',
+                padding: isMobile ? '8px 12px' : '10px 16px',
+                backgroundColor: 'var(--tc-bg-color-container)',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap'
+              }}>
+                <Button 
+                  size="small" 
+                  variant="outline"
+                  onClick={navigateUp}
+                  disabled={currentPath === (datasetPath || '/cfs/rl-data')}
+                  icon={<ChevronUpIcon />}
+                  style={{ flexShrink: 0 }}
+                >
+                  {!isMobile && 'Up'}
+                </Button>
+                <div style={{ 
+                  flex: 1, 
+                  overflow: 'hidden',
+                  fontSize: isMobile ? '12px' : '13px'
+                }}>
+                  <Breadcrumb 
+                    maxItemWidth="120px"
+                    options={getBreadcrumbItems()}
+                  />
+                </div>
+                <Button 
+                  size="small" 
+                  variant="outline"
+                  onClick={() => fetchFiles(currentPath)}
+                  icon={<RefreshIcon />}
+                  style={{ flexShrink: 0 }}
+                >
+                  {!isMobile && 'Refresh'}
+                </Button>
+              </div>
+
+              {/* 搜索和视图切换 */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '8px',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'stretch' : 'center'
+              }}>
+                <Input
+                  placeholder="Search files..."
+                  value={searchText}
+                  onChange={(value) => setSearchText(value)}
+                  prefixIcon={<SearchIcon />}
+                  clearable
+                  size={isMobile ? 'medium' : 'medium'}
+                  style={{ flex: 1 }}
+                />
+                <Radio.Group 
+                  value={viewMode} 
+                  onChange={(value) => setViewMode(value as 'list' | 'grid')}
+                  variant="default-filled"
+                  size={isMobile ? 'medium' : 'medium'}
+                >
                   <Radio.Button value="list">
-                    <ViewListIcon /> List
+                    <ViewListIcon /> {!isMobile && 'List'}
                   </Radio.Button>
                   <Radio.Button value="grid">
-                    <ViewModuleIcon /> Grid
+                    <ViewModuleIcon /> {!isMobile && 'Grid'}
                   </Radio.Button>
                 </Radio.Group>
               </div>
-              <Input
-                placeholder="Search files..."
-                value={searchText}
-                onChange={(value) => setSearchText(value)}
-                prefixIcon={<SearchIcon />}
-                clearable
-              />
             </div>
 
-            {/* File Display */}
-            {viewMode === 'list' ? (
-              <Table
-                rowKey="path"
-                data={filteredFiles}
-                columns={columns}
-                loading={loading}
-                stripe
-                hover
-                bordered={false}
-                size="medium"
-                empty="No files found"
-                maxHeight={500}
-              />
-            ) : (
-              renderGridView()
-            )}
+            {/* 文件统计 */}
+            <div style={{ 
+              marginBottom: '12px',
+              fontSize: '13px',
+              color: 'var(--tc-text-secondary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0 4px'
+            }}>
+              <span>
+                {filteredFiles.length} items 
+                {searchText && ` (filtered from ${files.length})`}
+              </span>
+              <span>
+                {filteredFiles.filter(f => f.isDir).length} folders, {filteredFiles.filter(f => !f.isDir).length} files
+              </span>
+            </div>
+
+            {/* 文件显示区域 */}
+            <div style={{ 
+              flex: 1, 
+              overflow: 'auto',
+              minHeight: 0
+            }}>
+              {viewMode === 'list' ? (
+                <Table
+                  rowKey="path"
+                  data={filteredFiles}
+                  columns={isMobile ? mobileColumns : desktopColumns}
+                  loading={loading}
+                  stripe
+                  hover
+                  bordered={false}
+                  size={isMobile ? 'small' : 'medium'}
+                  empty={
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                      <FileIcon size="48px" style={{ opacity: 0.3, marginBottom: '12px' }} />
+                      <div style={{ color: 'var(--tc-text-secondary)' }}>
+                        {searchText ? 'No matching files found' : 'This folder is empty'}
+                      </div>
+                    </div>
+                  }
+                  maxHeight="100%"
+                />
+              ) : (
+                renderGridView()
+              )}
+            </div>
           </Card>
         </Col>
       </Row>
 
-      {/* Preview Drawer */}
+      {/* 预览抽屉 */}
       <Drawer
         visible={previewVisible}
         onClose={() => {
@@ -381,11 +733,12 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
         }}
         header={
           <Space align="center">
-            <FileIcon />
-            <span>{previewFile?.name}</span>
+            {previewFile && getFileIcon(previewFile, '20px')}
+            <span style={{ fontWeight: '500' }}>{previewFile?.name}</span>
+            {previewFile && getFileTypeTag(previewFile)}
           </Space>
         }
-        size="large"
+        size={isMobile ? '90%' : 'large'}
         footer={
           <Space>
             <Button onClick={() => setPreviewVisible(false)}>Close</Button>
@@ -396,127 +749,81 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ namespace, datasetPath, datas
             )}
           </Space>
         }
+        destroyOnClose
       >
         {previewContent && (
-          <div style={{ padding: '16px' }}>
+          <div style={{ padding: isMobile ? '12px' : '16px' }}>
+            {previewContent.loading && (
+              <div style={{ textAlign: 'center', padding: '60px' }}>
+                <div style={{ marginBottom: '16px' }}>Loading preview...</div>
+              </div>
+            )}
+            
             {previewContent.type === 'text' && (
               <div>
+                <div style={{ 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  backgroundColor: 'var(--tc-bg-color-container)',
+                  borderRadius: '4px',
+                  fontSize: '13px'
+                }}>
+                  <span>
+                    <strong>{previewContent.lines}</strong> lines · <strong>{formatBytes(previewContent.size)}</strong>
+                  </span>
+                </div>
                 <pre style={{ 
                   backgroundColor: 'var(--tc-bg-color-container)', 
                   padding: '16px', 
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   overflow: 'auto',
-                  maxHeight: '500px'
+                  maxHeight: '600px',
+                  fontSize: isMobile ? '12px' : '13px',
+                  lineHeight: '1.6',
+                  margin: 0
                 }}>
                   {previewContent.content}
                 </pre>
                 {previewContent.truncated && (
-                  <div style={{ marginTop: '8px', color: 'var(--tc-warning-color)' }}>
-                    ⚠️ Content truncated (showing first 10KB)
-                  </div>
-                )}
-              </div>
-            )}
-            {previewContent.type === 'parquet' && (
-              <div>
-                {previewContent.message && (
                   <div style={{ 
-                    padding: '12px', 
-                    backgroundColor: 'var(--tc-bg-color-container)', 
+                    marginTop: '12px', 
+                    padding: '12px',
+                    backgroundColor: 'var(--tc-warning-color-1)',
+                    color: 'var(--tc-warning-color)',
                     borderRadius: '4px',
-                    marginBottom: '16px',
-                    color: 'var(--tc-text-secondary)'
+                    fontSize: '13px'
                   }}>
-                    ℹ️ {previewContent.message}
-                  </div>
-                )}
-                
-                {previewContent.schema && previewContent.schema.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h4 style={{ marginBottom: '8px' }}>Schema ({previewContent.schema.length} columns)</h4>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: '8px',
-                      padding: '12px',
-                      backgroundColor: 'var(--tc-bg-color-container)',
-                      borderRadius: '4px'
-                    }}>
-                      {previewContent.schema.map((col: any, idx: number) => (
-                        <Tag key={idx} theme="primary" variant="light">
-                          {col.name}: {col.type}
-                        </Tag>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {previewContent.data && previewContent.data.length > 0 && (
-                  <div>
-                    <h4 style={{ marginBottom: '8px' }}>
-                      Data Preview ({previewContent.previewRows} of {previewContent.totalRows} rows)
-                    </h4>
-                    <div style={{ 
-                      maxHeight: '400px', 
-                      overflow: 'auto',
-                      border: '1px solid var(--tc-border-level-1-color)',
-                      borderRadius: '4px'
-                    }}>
-                      <Table
-                        rowKey="index"
-                        data={previewContent.data.map((item: any, index: number) => ({ ...item, index }))}
-                        columns={Object.keys(previewContent.data[0] || {}).map(key => ({
-                          colKey: key,
-                          title: key,
-                          width: 150,
-                          ellipsis: true,
-                          cell: ({ row }: any) => {
-                            const value = row[key];
-                            if (value === null || value === undefined) {
-                              return <span style={{ color: 'var(--tc-text-placeholder)' }}>null</span>;
-                            }
-                            if (typeof value === 'object') {
-                              return <span style={{ fontSize: '12px' }}>{JSON.stringify(value)}</span>;
-                            }
-                            return <span>{String(value)}</span>;
-                          }
-                        }))}
-                        bordered
-                        stripe
-                        size="small"
-                        maxHeight={350}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(!previewContent.data || previewContent.data.length === 0) && !previewContent.message && (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'var(--tc-text-secondary)' }}>
-                    <FileIcon size="48px" style={{ marginBottom: '16px', opacity: 0.5 }} />
-                    <div>No data to preview</div>
+                    ⚠️ Content truncated (showing first 1MB)
                   </div>
                 )}
               </div>
             )}
-            {previewContent.type === 'image' && (
-              <div style={{ textAlign: 'center' }}>
-                <img 
-                  src={`http://localhost:8080/api/datasets/download?path=${encodeURIComponent(previewFile?.path || '')}`}
-                  alt={previewFile?.name}
-                  style={{ maxWidth: '100%', maxHeight: '600px' }}
-                />
-              </div>
-            )}
+            
             {previewContent.type === 'unsupported' && (
-              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--tc-text-secondary)' }}>
-                <FileIcon size="48px" style={{ marginBottom: '16px', opacity: 0.5 }} />
-                <div>{previewContent.message}</div>
+              <div style={{ textAlign: 'center', padding: '60px', color: 'var(--tc-text-secondary)' }}>
+                <FileIcon size="64px" style={{ marginBottom: '16px', opacity: 0.3 }} />
+                <div style={{ fontSize: '16px', marginBottom: '8px' }}>{previewContent.content}</div>
+                <div style={{ fontSize: '13px' }}>
+                  File size: {formatBytes(previewContent.size)}
+                </div>
+              </div>
+            )}
+
+            {previewContent.type === 'error' && (
+              <div style={{ textAlign: 'center', padding: '60px', color: 'var(--tc-error-color)' }}>
+                <div style={{ fontSize: '16px', marginBottom: '8px' }}>Failed to load preview</div>
+                <div style={{ fontSize: '13px', color: 'var(--tc-text-secondary)' }}>
+                  {previewContent.message}
+                </div>
               </div>
             )}
           </div>
         )}
       </Drawer>
-    </>
+    </div>
   );
 };
 

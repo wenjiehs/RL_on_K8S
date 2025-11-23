@@ -294,25 +294,28 @@ func main() {
 						if output != "" {
 							lines := strings.Split(strings.TrimSpace(output), "\n")
 							for _, line := range lines {
-								parts := strings.Fields(line)
-								if len(parts) >= 2 && parts[0] != "." && parts[0] != ".." {
-									// Use unified storage path
-									mountPath := "/mnt/cfs-turbo/cfs"
-									
-									datasets = append(datasets, map[string]interface{}{
-										"name": parts[0],
-										"path": mountPath + "/" + parts[0],
-										"size": parts[1] + " bytes",
-										"created": "2024-01-01",
-										"cfsStatus": map[string]interface{}{
-											"connected": true,
-											"mountPoint": mountPath,
-											"totalSize": "2.0T",
-											"available": "1.7T",
-											"podName": podName,
-										},
-									})
-								}
+						parts := strings.Fields(line)
+						if len(parts) >= 2 && parts[0] != "." && parts[0] != ".." {
+							// Use unified storage path
+							mountPath := "/mnt/cfs-turbo/cfs"
+							// Frontend API path (for browse API)
+							apiPath := "/cfs/" + parts[0]
+							
+							datasets = append(datasets, map[string]interface{}{
+								"name":        parts[0],
+								"path":        mountPath + "/" + parts[0],
+								"storagePath": apiPath, // Frontend API path
+								"size":        parts[1] + " bytes",
+								"created":     "2024-01-01",
+								"cfsStatus": map[string]interface{}{
+									"connected":  true,
+									"mountPoint": mountPath,
+									"totalSize":  "2.0T",
+									"available":  "1.7T",
+									"podName":    podName,
+								},
+							})
+						}
 							}
 						}
 					}
@@ -320,14 +323,15 @@ func main() {
 			}
 		}
 		
-		// If no datasets found, add example
-		if len(datasets) == 0 {
-			datasets = append(datasets, map[string]interface{}{
-				"name": "example-dataset",
-				"path": "/mnt/cfs-turbo/cfs",
-				"size": "1GB",
-				"created": "2024-01-01",
-				"cfsStatus": map[string]interface{}{
+	// If no datasets found, add example
+	if len(datasets) == 0 {
+		datasets = append(datasets, map[string]interface{}{
+			"name":        "example-dataset",
+			"path":        "/mnt/cfs-turbo/cfs",
+			"storagePath": "/cfs/example-dataset",
+			"size":        "1GB",
+			"created":     "2024-01-01",
+			"cfsStatus": map[string]interface{}{
 					"connected": true,
 					"mountPoint": "/mnt/cfs",
 					"totalSize": "2.0T",
@@ -339,6 +343,12 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(datasets)
 	})
+	
+	// Dataset file browser routes
+	mux.HandleFunc("/api/datasets/browse", handleDatasetBrowse)
+	mux.HandleFunc("/api/datasets/preview", handleDatasetPreview)
+	mux.HandleFunc("/api/datasets/download", handleDatasetDownload)
+	mux.HandleFunc("/api/datasets/file/delete", handleDatasetDelete)
 	
 	// Datasets stats route
 	mux.HandleFunc("/api/datasets/stats", func(w http.ResponseWriter, r *http.Request) {
