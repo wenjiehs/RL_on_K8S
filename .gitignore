@@ -5,7 +5,7 @@
 *.dylib
 
 # Go build artifacts
-api-server
+/api-server
 bin/api-server
 /cmd/api-server/api-server
 
@@ -52,5 +52,7 @@ kubectl-ianvs
 .env.*.local
 
 # CodeBuddy
-.codebuddy/# Database files
+.codebuddy/
+
+# Database files
 training.db
