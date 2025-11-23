@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Button, Space, Typography, Loading, Alert, Tag, Switch, Input, Slider } from 'tdesign-react';
-import { DownloadIcon, RefreshIcon, PauseIcon, PlayIcon, SearchIcon, ClearIcon } from 'tdesign-icons-react';
+import { DownloadIcon, RefreshIcon, SearchIcon, ClearIcon } from 'tdesign-icons-react';
 import { MessagePlugin } from 'tdesign-react';
 
 const { Text } = Typography;
@@ -20,20 +20,21 @@ interface TrainingJobLogsProps {
 }
 
 const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) => {
+  // 优化版本 - 支持分页加载
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string>('');
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [totalLines, setTotalLines] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [currentOffset, setCurrentOffset] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [refreshInterval, setRefreshInterval] = useState(5);
   const [fontSize, setFontSize] = useState(12);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [wrapLines, setWrapLines] = useState(true);
+  const pageSize = 500; // 每次加载500行
   
   const logsContainerRef = useRef<HTMLDivElement>(null);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 过滤日志
   const filteredLogs = logs.filter(line => 
@@ -74,13 +75,17 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
     return null;
   };
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (offset: number = 0, append: boolean = false) => {
     try {
-      setLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       setError('');
 
       const response = await fetch(
-        `http://localhost:8080/api/training-jobs/file-logs?jobId=${jobId}&limit=1000`
+        `http://localhost:8080/api/training-jobs/file-logs?jobId=${jobId}&offset=${offset}&limit=${pageSize}`
       );
 
       if (!response.ok) {
@@ -90,17 +95,16 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
       const data: LogResponse = await response.json();
 
       if (data.success) {
-        setLogs(data.lines);
-        setTotalLines(data.totalLines);
-        
-        // 自动滚动到底部
-        if (autoScroll && logsContainerRef.current) {
-          setTimeout(() => {
-            if (logsContainerRef.current) {
-              logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-            }
-          }, 100);
+        if (append) {
+          // 追加模式：在现有日志后面添加
+          setLogs(prev => [...prev, ...data.lines]);
+        } else {
+          // 刷新模式：替换所有日志
+          setLogs(data.lines);
         }
+        setTotalLines(data.totalLines);
+        setHasMore(data.hasMore);
+        setCurrentOffset(offset + data.lines.length);
       } else {
         setError(data.message);
       }
@@ -108,8 +112,16 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
       setError(err instanceof Error ? err.message : '获取日志失败');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [jobId, autoScroll]);
+  }, [jobId, pageSize]);
+
+  // 加载更多日志
+  const loadMoreLogs = () => {
+    if (!loadingMore && hasMore) {
+      fetchLogs(currentOffset, true);
+    }
+  };
 
   const downloadLogs = () => {
     if (filteredLogs.length === 0) {
@@ -132,39 +144,20 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
 
   const clearLogs = () => {
     setLogs([]);
+    setCurrentOffset(0);
+    setHasMore(false);
     MessagePlugin.info('日志已清空');
   };
 
-  const toggleAutoRefresh = () => {
-    setAutoRefresh(!autoRefresh);
-  };
-
-  const toggleAutoScroll = () => {
-    setAutoScroll(!autoScroll);
+  const handleRefresh = () => {
+    setCurrentOffset(0);
+    fetchLogs(0, false);
   };
 
   // 初始加载日志
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
-
-  // 设置自动刷新
-  useEffect(() => {
-    if (autoRefresh) {
-      refreshIntervalRef.current = setInterval(fetchLogs, refreshInterval * 1000);
-    } else {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [autoRefresh, refreshInterval, fetchLogs]);
 
   return (
     <div style={{ padding: '16px', maxWidth: '100%', margin: '0 auto' }}>
@@ -183,12 +176,7 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
             </Text>
             {totalLines > 0 && (
               <Tag theme="primary" variant="light" style={{ fontSize: '12px' }}>
-                {totalLines} 行
-              </Tag>
-            )}
-            {autoRefresh && (
-              <Tag theme="success" variant="light" style={{ fontSize: '12px' }}>
-                自动刷新中
+                共 {totalLines} 行
               </Tag>
             )}
           </div>
@@ -198,7 +186,7 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
               theme="primary"
               variant="text"
               icon={<RefreshIcon />}
-              onClick={fetchLogs}
+              onClick={handleRefresh}
               loading={loading}
               size="small"
             >
@@ -250,40 +238,6 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
             />
           </div>
 
-          {/* 自动刷新控制 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Text style={{ fontSize: '14px', minWidth: '80px' }}>自动刷新:</Text>
-            <Switch 
-              value={autoRefresh} 
-              onChange={toggleAutoRefresh}
-              size="small"
-            />
-            {autoRefresh && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Text style={{ fontSize: '12px', color: '#666' }}>{refreshInterval}s</Text>
-                <Slider
-                  value={refreshInterval}
-                  onChange={setRefreshInterval}
-                  min={1}
-                  max={30}
-                  step={1}
-                  style={{ width: '80px' }}
-                  size="small"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 自动滚动控制 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Text style={{ fontSize: '14px', minWidth: '80px' }}>自动滚动:</Text>
-            <Switch 
-              value={autoScroll} 
-              onChange={toggleAutoScroll}
-              size="small"
-            />
-          </div>
-
           {/* 显示选项 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Text style={{ fontSize: '14px', minWidth: '80px' }}>显示选项:</Text>
@@ -308,12 +262,15 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
             <Text style={{ fontSize: '14px', minWidth: '60px' }}>字号:</Text>
             <Slider
               value={fontSize}
-              onChange={setFontSize}
+              onChange={(value) => {
+                if (typeof value === 'number') {
+                  setFontSize(value);
+                }
+              }}
               min={10}
               max={18}
               step={1}
               style={{ width: '100px' }}
-              size="small"
             />
             <Text style={{ fontSize: '12px', color: '#666', minWidth: '20px' }}>
               {fontSize}
@@ -326,8 +283,8 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
       {error && (
         <Alert 
           theme="error" 
-          message={error} 
-          closable
+          message={error}
+          close
           onClose={() => setError('')}
           style={{ marginBottom: '16px' }}
         />
@@ -348,10 +305,23 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <Text style={{ fontSize: '14px', color: '#666' }}>
-            显示 {filteredLogs.length} / {logs.length} 条日志
-            {searchTerm && ` (搜索: "${searchTerm}")`}
-          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Text style={{ fontSize: '14px', color: '#666' }}>
+              显示 {filteredLogs.length} / {logs.length} 条日志
+              {searchTerm && ` (搜索: "${searchTerm}")`}
+            </Text>
+            {hasMore && (
+              <Button
+                theme="primary"
+                size="small"
+                onClick={loadMoreLogs}
+                loading={loadingMore}
+                style={{ fontSize: '12px' }}
+              >
+                {loadingMore ? '加载中...' : `加载更多 (剩余 ${totalLines - currentOffset} 行)`}
+              </Button>
+            )}
+          </div>
           <Text style={{ fontSize: '12px', color: '#999' }}>
             任务ID: {jobId}
           </Text>
@@ -477,9 +447,6 @@ const TrainingJobLogs: React.FC<TrainingJobLogsProps> = ({ jobId, jobStatus }) =
                 状态: {jobStatus}
               </Tag>
             )}
-            <Text style={{ fontSize: '12px', color: '#999' }}>
-              刷新间隔: {refreshInterval}s
-            </Text>
           </Space>
         </div>
       </Card>

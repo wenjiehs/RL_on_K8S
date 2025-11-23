@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -52,10 +55,11 @@ func handleGetTrainingJobFileLogs(w http.ResponseWriter, r *http.Request) {
 
 	// 获取分页参数
 	offset := 0
-	limit := 1000 // 默认返回最后1000行
+	limit := 500 // 默认返回500行
+	maxLimit := 500 // 限制单次最大500行
 
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if val, err := strconv.Atoi(offsetStr); err == nil {
+		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
 			offset = val
 		}
 	}
@@ -63,6 +67,10 @@ func handleGetTrainingJobFileLogs(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 {
 			limit = val
+			// 限制最大值
+			if limit > maxLimit {
+				limit = maxLimit
+			}
 		}
 	}
 
@@ -164,12 +172,19 @@ func readLogFileFromPod(podName, namespace, jobID string, offset, limit int) ([]
 	}
 
 	var stdout, stderr strings.Builder
-	err = exec.Stream(remotecommand.StreamOptions{
+	// 添加超时控制
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
 
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, 0, fmt.Errorf("timeout while checking file")
+		}
 		return nil, 0, fmt.Errorf("failed to check file: %v, stderr: %s", err, stderr.String())
 	}
 
@@ -220,12 +235,20 @@ func readLogFileFromPod(podName, namespace, jobID string, offset, limit int) ([]
 
 	stdout.Reset()
 	stderr.Reset()
-	err = exec.Stream(remotecommand.StreamOptions{
+	
+	// 添加超时控制
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel2()
+	
+	err = exec.StreamWithContext(ctx2, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
 
 	if err != nil {
+		if ctx2.Err() == context.DeadlineExceeded {
+			return nil, totalLines, fmt.Errorf("timeout while reading file (offset=%d, limit=%d)", offset, limit)
+		}
 		return nil, totalLines, fmt.Errorf("failed to read file: %v, stderr: %s", err, stderr.String())
 	}
 
@@ -239,7 +262,43 @@ func readLogFileFromPod(podName, namespace, jobID string, offset, limit int) ([]
 
 // findJobPod 查找训练任务对应的 Pod
 func findJobPod(jobID string) (string, string, error) {
-	// 训练任务在 Ray head pod 中运行，直接返回默认的 Ray head pod
-	log.Printf("Training job %s runs in Ray head pod", jobID)
-	return "ray-single-group-head-cmkr6", "rl", nil
+	// 从数据库获取训练任务信息
+	db := GetDB()
+	if db == nil {
+		return "", "", fmt.Errorf("database not available")
+	}
+	
+	var job TrainingJobDB
+	if err := db.Where("id = ?", jobID).First(&job).Error; err != nil {
+		return "", "", fmt.Errorf("failed to find training job: %v", err)
+	}
+	
+	namespace := job.Namespace
+	if namespace == "" {
+		namespace = "rl"
+	}
+	
+	environmentID := job.EnvironmentID
+	if environmentID == "" {
+		environmentID = "ray-single-group"
+	}
+	
+	// 查找 Ray head pod
+	ctx := context.Background()
+	pods, err := currentClientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("ray.io/cluster=%s,ray.io/node-type=head", environmentID),
+	})
+	
+	if err != nil {
+		return "", "", fmt.Errorf("failed to list pods: %v", err)
+	}
+	
+	if len(pods.Items) == 0 {
+		return "", "", fmt.Errorf("no Ray head pod found for environment %s in namespace %s", environmentID, namespace)
+	}
+	
+	podName := pods.Items[0].Name
+	log.Printf("Found Ray head pod %s in namespace %s for job %s", podName, namespace, jobID)
+	
+	return podName, namespace, nil
 }

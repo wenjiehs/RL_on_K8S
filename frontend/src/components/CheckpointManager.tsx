@@ -81,18 +81,46 @@ const CheckpointManager: React.FC<CheckpointManagerProps> = ({ jobId, jobStatus 
     try {
       const url = `http://localhost:8080/api/training-jobs/checkpoint/download?id=${jobId}&path=${encodeURIComponent(checkpoint.path)}`;
       
-      // 创建隐藏的a标签触发下载
+      // 使用fetch下载，支持更好的错误处理和跨域场景
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`下载失败: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+      // 获取文件内容为Blob
+      const blob = await response.blob();
+      
+      // 从响应头获取建议的文件名，如果没有则使用checkpoint名称
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let downloadFilename = checkpoint.name;
+      
+      if (contentDisposition) {
+        // 解析 Content-Disposition: attachment; filename="xxx.tar.gz"
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          downloadFilename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+      
+      // 创建临时URL并触发下载
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = checkpoint.name;
+      link.href = downloadUrl;
+      link.download = downloadFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
-      MessagePlugin.success(`开始下载 ${checkpoint.name}`);
+      // 释放URL对象，避免内存泄漏
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      MessagePlugin.success(`下载 ${downloadFilename} 成功`);
     } catch (error) {
       console.error('Failed to download checkpoint:', error);
-      MessagePlugin.error('下载checkpoint失败');
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      MessagePlugin.error(`下载checkpoint失败: ${errorMessage}`);
     } finally {
       setDownloading(null);
     }
